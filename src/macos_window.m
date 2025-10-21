@@ -1,4 +1,5 @@
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/CAMetalLayer.h>
 
 @interface WindowDelegate : NSObject <NSWindowDelegate>
 @property(assign) BOOL shouldClose;
@@ -28,13 +29,31 @@ void *createMacWindow(void) {
   windowDelegate.shouldClose = NO;
   [window setDelegate:windowDelegate];
 
+  // Create Metal layer for Vulkan
+  NSView *contentView = [window contentView];
+  [contentView setWantsLayer:YES];
+  CAMetalLayer *metalLayer = [CAMetalLayer layer];
+  [contentView setLayer:metalLayer];
+
   [window makeKeyAndOrderFront:nil];
   [NSApp activateIgnoringOtherApps:YES];
 
   return (__bridge_retained void *)window;
 }
 
-// Event types matching NSEventType
+void *getMetalLayer(void *window) {
+  NSWindow *nsWindow = (__bridge NSWindow *)window;
+  NSView *contentView = [nsWindow contentView];
+  return (__bridge void *)[contentView layer];
+}
+
+void getWindowSize(void *window, int *width, int *height) {
+  NSWindow *nsWindow = (__bridge NSWindow *)window;
+  NSRect frame = [[nsWindow contentView] frame];
+  *width = (int)frame.size.width;
+  *height = (int)frame.size.height;
+}
+
 typedef enum {
   EventTypeKeyDown = 10,
   EventTypeKeyUp = 11,
@@ -70,37 +89,9 @@ bool pollMacEvent(MacEvent *outEvent) {
   }
 
   [NSApp sendEvent:event];
+  [NSApp updateWindows];
 
   outEvent->type = (EventType)[event type];
-
-  switch ([event type]) {
-  case NSEventTypeKeyDown:
-  case NSEventTypeKeyUp:
-    outEvent->keyCode = [event keyCode];
-    break;
-
-  case NSEventTypeLeftMouseDown:
-  case NSEventTypeLeftMouseUp:
-  case NSEventTypeRightMouseDown:
-  case NSEventTypeRightMouseUp:
-  case NSEventTypeMouseMoved:
-  case NSEventTypeLeftMouseDragged:
-  case NSEventTypeRightMouseDragged: {
-    NSPoint location = [event locationInWindow];
-    outEvent->mouseX = location.x;
-    outEvent->mouseY = location.y;
-    break;
-  }
-
-  case NSEventTypeScrollWheel:
-    outEvent->deltaX = [event scrollingDeltaX];
-    outEvent->deltaY = [event scrollingDeltaY];
-    break;
-
-  default:
-    break;
-  }
-
   return true;
 }
 

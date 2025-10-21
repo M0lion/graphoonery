@@ -1,4 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const vk = @import("vk.zig");
+const c = vk.c;
 
 const EventType = enum(c_int) {
     none = 0,
@@ -23,37 +26,78 @@ const MacEvent = extern struct {
 extern fn createMacWindow() ?*anyopaque;
 extern fn pollMacEvent(event: *MacEvent) bool;
 extern fn releaseMacWindow(?*anyopaque) void;
+extern fn getMetalLayer(window: *anyopaque) *anyopaque;
+extern fn getWindowSize(window: *anyopaque, width: *c_int, height: *c_int) void;
 
 pub fn main() !void {
     const window = createMacWindow() orelse return error.WindowCreationFailed;
     defer releaseMacWindow(window);
 
-    std.debug.print("Window created! Close it or press keys to see events.\n", .{});
+    var width: c_int = 0;
+    var height: c_int = 0;
+    getWindowSize(window, &width, &height);
 
+    // Create Vulkan instance
+    const app_info = c.VkApplicationInfo{
+        .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pNext = null,
+        .pApplicationName = "Vulkan Triangle",
+        .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
+        .pEngineName = "No Engine",
+        .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
+        .apiVersion = vk.API_VERSION_1_0,
+    };
+
+    // Simpler extension list for older MoltenVK
+    const extensions = if (builtin.os.tag == .macos)
+        [_][*:0]const u8{
+            c.VK_KHR_SURFACE_EXTENSION_NAME,
+            c.VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+        }
+    else
+        [_][*:0]const u8{
+            c.VK_KHR_SURFACE_EXTENSION_NAME,
+            c.VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+        };
+
+    const instance_create_info = c.VkInstanceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0, // Remove portability enumeration flag
+        .pApplicationInfo = &app_info,
+        .enabledLayerCount = 0,
+        .ppEnabledLayerNames = null,
+        .enabledExtensionCount = extensions.len,
+        .ppEnabledExtensionNames = &extensions,
+    };
+
+    var instance: vk.Instance = undefined;
+    try vk.checkResult(c.vkCreateInstance(&instance_create_info, null, &instance));
+    defer c.vkDestroyInstance(instance, null);
+
+    // Create surface
+    var surface: vk.SurfaceKHR = undefined;
+    if (builtin.os.tag == .macos) {
+        const metal_layer = getMetalLayer(window);
+        const surface_create_info = c.VkMetalSurfaceCreateInfoEXT{
+            .sType = c.VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+            .pNext = null,
+            .flags = 0,
+            .pLayer = metal_layer,
+        };
+        try vk.checkResult(c.vkCreateMetalSurfaceEXT(instance, &surface_create_info, null, &surface));
+    } else {
+        // Wayland surface - you'll need wl_display and wl_surface pointers
+        @compileError("Wayland surface creation not implemented");
+    }
+    defer c.vkDestroySurfaceKHR(instance, surface, null);
+
+    std.debug.print("Vulkan instance and surface created successfully!\n", .{});
+    std.debug.print("Width: {}, Height: {}\n", .{ width, height });
+
+    // Event loop
     var event: MacEvent = undefined;
     while (pollMacEvent(&event)) {
-        switch (event.type) {
-            .key_down => {
-                std.debug.print("Key down: {}\n", .{event.key_code});
-            },
-            .key_up => {
-                std.debug.print("Key up: {}\n", .{event.key_code});
-            },
-            .mouse_down => {
-                std.debug.print("Mouse down at: {d:.1}, {d:.1}\n", .{ event.mouse_x, event.mouse_y });
-            },
-            .mouse_moved => {
-                std.debug.print("Mouse moved to: {d:.1}, {d:.1}\n", .{ event.mouse_x, event.mouse_y });
-            },
-            .scroll_wheel => {
-                std.debug.print("Scroll: {d:.1}, {d:.1}\n", .{ event.delta_x, event.delta_y });
-            },
-            .none => {},
-            else => {},
-        }
-
-        std.Thread.sleep(50000);
+        std.Thread.sleep(16_000_000);
     }
-
-    std.debug.print("Window closed, exiting.\n", .{});
 }

@@ -13,13 +13,24 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // Add Vulkan headers from dependency
+    const vulkan_headers = b.dependency("vulkan_headers", .{});
+    exe.addIncludePath(vulkan_headers.path("include"));
+
     // Add Objective-C file
     exe.addCSourceFile(.{
         .file = b.path("src/macos_window.m"),
     });
 
-    // Link frameworks
-    exe.linkFramework("Cocoa");
+    // Link frameworks and libraries
+    if (target.result.os.tag == .macos) {
+        exe.linkFramework("Cocoa");
+        exe.linkFramework("QuartzCore");
+        exe.linkFramework("Metal");
+        exe.linkSystemLibrary("MoltenVK");
+    } else {
+        exe.linkSystemLibrary("vulkan");
+    }
     exe.linkLibC();
 
     b.installArtifact(exe);
