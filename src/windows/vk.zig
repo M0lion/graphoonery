@@ -1,6 +1,7 @@
 pub const c = @cImport({
     @cInclude("vulkan/vulkan.h");
     @cInclude("vulkan/vulkan_metal.h"); // For VK_EXT_metal_surface
+    @cInclude("vulkan/vulkan_wayland.h");
 });
 
 // Re-export common types for convenience

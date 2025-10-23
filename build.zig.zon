@@ -36,6 +36,14 @@
             .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.296.tar.gz",
             .hash = "1220d8deff13f2e31607eb0771cb316abc7753f79424aef3edb653a101ec942ce981",
         },
+        .wayland_protocols = .{
+            .url = "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.36/wayland-protocols-1.36.tar.gz",
+            .hash = "N-V-__8AANngCgCXH9wtO01glSyCBJDdGuzQx2dMr48Lf8-4",
+        },
+        .wayland = .{
+            .url = "git+https://github.com/ifreund/zig-wayland.git#1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea",
+            .hash = "wayland-0.5.0-dev-lQa1khrMAQDJDwYFKpdH3HizherB7sHo5dKMECfvxQHe",
+        },
     },
     .paths = .{
         "build.zig",
