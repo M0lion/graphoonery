@@ -95,6 +95,25 @@ pub fn main() !void {
     std.debug.print("Vulkan instance and surface created successfully!\n", .{});
     std.debug.print("Width: {}, Height: {}\n", .{ width, height });
 
+    var gpa = std.heap.DebugAllocator(.{}){};
+    var allocator = gpa.allocator();
+
+    var deviceCount: u32 = 0;
+    _ = c.vkEnumeratePhysicalDevices(instance, &deviceCount, null);
+    const physicalDevices = try allocator.alloc(c.VkPhysicalDevice, deviceCount);
+    _ = c.vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.ptr);
+    std.log.info("{}", .{deviceCount});
+    for (physicalDevices) |device| {
+        var properties: c.VkPhysicalDeviceProperties = undefined;
+        c.vkGetPhysicalDeviceProperties(device, &properties);
+        std.log.info("{s}", .{properties.deviceName});
+
+        var queueFamilyCount: u32 = 0;
+        _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, null);
+        const queueFamilies = try allocator.alloc(c.VkQueueFamilyProperties, queueFamilyCount);
+        _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.ptr);
+    }
+
     // Event loop
     var event: MacEvent = undefined;
     while (pollMacEvent(&event)) {
