@@ -32,6 +32,9 @@ pub fn build(b: *std.Build) void {
         exe.linkFramework("Metal");
         exe.linkSystemLibrary("MoltenVK");
     } else {
+        // Generate xdg-shell protocol C headers
+        generateWaylandProtocol(b, exe);
+
         module.addImport("wayland", getWayland(b));
         exe.linkSystemLibrary("wayland-client");
         exe.linkSystemLibrary("wayland-egl");
@@ -70,4 +73,21 @@ fn getWayland(b: *std.Build) *std.Build.Module {
     scanner.generate("zwlr_layer_shell_v1", 5);
 
     return wayland;
+}
+
+fn generateWaylandProtocol(b: *std.Build, exe: *std.Build.Step.Compile) void {
+    // Run wayland-scanner to generate C protocol files
+    const wayland_scanner = b.addSystemCommand(&.{ "wayland-scanner", "client-header" });
+    wayland_scanner.addArg("/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml");
+    const header_file = wayland_scanner.addOutputFileArg("xdg-shell-client-protocol.h");
+
+    const wayland_scanner_code = b.addSystemCommand(&.{ "wayland-scanner", "private-code" });
+    wayland_scanner_code.addArg("/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml");
+    const code_file = wayland_scanner_code.addOutputFileArg("xdg-shell-client-protocol.c");
+
+    // Add generated files to the executable
+    exe.addCSourceFile(.{
+        .file = code_file,
+    });
+    exe.addIncludePath(header_file.dirname());
 }

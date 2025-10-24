@@ -1,3 +1,4 @@
+const std = @import("std");
 pub const c = @cImport({
     @cInclude("vulkan/vulkan.h");
     @cInclude("vulkan/vulkan_metal.h"); // For VK_EXT_metal_surface
@@ -18,6 +19,7 @@ pub const API_VERSION_1_0 = c.VK_API_VERSION_1_0;
 // Helper to check results
 pub fn checkResult(result: Result) !void {
     if (result != SUCCESS) {
-        return error.VulkanError;
+        std.log.err("Vulkan error: {}", .{result});
+        return error.VkError;
     }
 }
