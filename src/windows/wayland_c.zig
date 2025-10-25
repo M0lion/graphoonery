@@ -23,19 +23,14 @@ pub const WaylandWindow = struct {
     height: u32,
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !WaylandWindow {
-        var self = WaylandWindow{
+        return WaylandWindow{
             .allocator = allocator,
             .width = width,
             .height = height,
         };
-
-        try self.initConnection();
-        try self.createWindow();
-
-        return self;
     }
 
-    fn initConnection(self: *WaylandWindow) !void {
+    pub fn initConnection(self: *WaylandWindow) !void {
         global_context = self;
 
         self.display = c.wl_display_connect(null);
@@ -58,7 +53,7 @@ pub const WaylandWindow = struct {
         std.log.info("Wayland connection established", .{});
     }
 
-    fn createWindow(self: *WaylandWindow) !void {
+    pub fn createWindow(self: *WaylandWindow) !void {
         self.surface = c.wl_compositor_create_surface(self.compositor);
         if (self.surface == null) return error.NoSurface;
 
@@ -70,7 +65,8 @@ pub const WaylandWindow = struct {
         self.xdg_toplevel = c.xdg_surface_get_toplevel(self.xdg_surface);
         if (self.xdg_toplevel == null) return error.NoXdgToplevel;
 
-        _ = c.xdg_toplevel_add_listener(self.xdg_toplevel, &xdg_toplevel_listener, null);
+        _ = c.xdg_toplevel_add_listener(self.xdg_toplevel, &xdg_toplevel_listener, self);
+        std.log.debug("Self addr: {*}", .{self});
         c.xdg_toplevel_set_title(self.xdg_toplevel, "Vulkan Window");
 
         c.wl_surface_commit(self.surface);
@@ -80,6 +76,11 @@ pub const WaylandWindow = struct {
         // }
 
         std.log.info("Window created", .{});
+    }
+
+    pub fn commit(self: *WaylandWindow) void {
+        c.wl_surface_commit(self.surface);
+        _ = c.wl_display_roundtrip(self.display);
     }
 
     pub fn dispatch(self: *WaylandWindow) void {
@@ -193,10 +194,8 @@ fn xdgToplevelConfigure(
 }
 
 fn xdgToplevelClose(data: ?*anyopaque, xdg_toplevel: ?*c.xdg_toplevel) callconv(.c) void {
-    _ = data;
+    var waylandWindow: *WaylandWindow = @ptrCast(@alignCast(data));
     _ = xdg_toplevel;
-    const ctx = global_context orelse return;
-
-    std.log.info("Window close requested", .{});
-    ctx.should_close = true;
+    std.log.info("Window close requested, {*}", .{waylandWindow});
+    waylandWindow.should_close = true;
 }

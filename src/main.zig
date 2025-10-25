@@ -1,8 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const vk = @import("windows/vk.zig");
+const vk = @import("vulkan/vk.zig");
 const c = vk.c;
 const windows = @import("windows/window.zig");
+const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
@@ -11,15 +12,22 @@ pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     var allocator = gpa.allocator();
 
+    std.log.debug("Window init", .{});
     var window = try windows.Window.init(allocator);
+    try window.finishInit();
+    std.log.debug("Window: {*}", .{&window});
     defer window.deinit();
 
-    std.debug.print("Surface value: {any}\n", .{window.surface});
-    std.debug.print("Instance value: {any}\n", .{window.instance});
+    std.log.debug("Vulkan init", .{});
+    var vulkanContext = try VulkanContext.init(&window);
+    defer vulkanContext.deinit();
+    const surface = vulkanContext.surface;
+    const instance = vulkanContext.instance;
+
+    std.debug.print("Surface value: {any}\n", .{surface});
+    std.debug.print("Instance value: {any}\n", .{instance});
 
     const width, const height = window.getWindowSize();
-
-    const instance = window.instance;
 
     var deviceCount: u32 = 0;
     try vk.checkResult(c.vkEnumeratePhysicalDevices(instance, &deviceCount, null));
@@ -49,7 +57,7 @@ pub fn main() !void {
             }
 
             var presentSupport: c.VkBool32 = c.VK_FALSE;
-            try vk.checkResult(c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), window.surface.?, &presentSupport));
+            try vk.checkResult(c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), surface.?, &presentSupport));
             if (presentSupport == c.VK_TRUE) {
                 presentFamily = i;
             }
@@ -77,9 +85,9 @@ pub fn main() !void {
         if (!hasSwapchain) continue;
 
         var formatCount: u32 = 0;
-        try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, window.surface, &formatCount, null));
+        try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, null));
         var presentModeCount: u32 = 0;
-        try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, window.surface, &presentModeCount, null));
+        try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, null));
 
         if (formatCount == 0 or presentModeCount == 0) continue;
 
@@ -100,7 +108,7 @@ pub fn main() !void {
     if (builtin.os.tag != .macos) {
         const vkGetPhysicalDeviceWaylandPresentationSupportKHR = @as(
             ?*const fn (c.VkPhysicalDevice, u32, ?*wayland_c.c.wl_display) callconv(.c) c.VkBool32,
-            @ptrCast(c.vkGetInstanceProcAddr(window.instance, "vkGetPhysicalDeviceWaylandPresentationSupportKHR")),
+            @ptrCast(c.vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceWaylandPresentationSupportKHR")),
         );
 
         if (vkGetPhysicalDeviceWaylandPresentationSupportKHR) |presentSupportFn| {
@@ -118,7 +126,7 @@ pub fn main() !void {
     // Create logical device
     const queuePriority: f32 = 1.0;
     const queueCreateInfo = c.VkDeviceQueueCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = @intCast(presentFamily.?),
         .queueCount = 1,
         .pQueuePriorities = &queuePriority,
@@ -141,20 +149,15 @@ pub fn main() !void {
 
     std.log.debug("Getting capabilities", .{});
     var capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, window.surface, &capabilities));
+    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities));
 
     var formatCount: u32 = 0;
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, window.surface, &formatCount, null));
+    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, null));
     std.debug.print("Available formats: {}\n", .{formatCount});
 
     const formats = try allocator.alloc(c.VkSurfaceFormatKHR, formatCount);
     defer allocator.free(formats);
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, window.surface, &formatCount, formats.ptr));
-
-    // Print available formats
-    for (formats, 0..) |format, i| {
-        std.debug.print("  Format {}: format={}, colorSpace={}\n", .{ i, format.format, format.colorSpace });
-    }
+    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, formats.ptr));
 
     // Choose format - look for BGRA8_SRGB, otherwise use first
     var chosenFormat = formats[0];
@@ -169,12 +172,12 @@ pub fn main() !void {
     std.debug.print("Chosen format: format={}, colorSpace={}\n", .{ chosenFormat.format, chosenFormat.colorSpace });
 
     var presentModeCount: u32 = 0;
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, window.surface, &presentModeCount, null));
+    try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, null));
     std.debug.print("Available present modes: {}\n", .{presentModeCount});
 
     const presentModes = try allocator.alloc(c.VkPresentModeKHR, presentModeCount);
     defer allocator.free(presentModes);
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, window.surface, &presentModeCount, presentModes.ptr));
+    try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.ptr));
 
     for (presentModes, 0..) |mode, i| {
         std.debug.print("  Mode {}: {}\n", .{ i, mode });
@@ -212,7 +215,7 @@ pub fn main() !void {
     const swapchainImageFormat = chosenFormat.format;
     var swapChainCreateInfo = c.VkSwapchainCreateInfoKHR{
         .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = window.surface,
+        .surface = surface,
         .minImageCount = chosenImageCount,
         .imageFormat = swapchainImageFormat,
         .imageColorSpace = chosenFormat.colorSpace,
@@ -247,15 +250,8 @@ pub fn main() !void {
         return;
     };
 
-    // Commit surface after swapchain creation for Wayland
-    if (builtin.os.tag != .macos) {
-        if (window.windowHandle.surface) |wlSurface| {
-            wayland_c.c.wl_surface_commit(wlSurface);
-        }
-        if (window.windowHandle.display) |display| {
-            _ = wayland_c.c.wl_display_roundtrip(display);
-        }
-    }
+    std.log.debug("Commiting surface", .{});
+    window.commit();
 
     std.log.debug("Creating image views", .{});
     var imageCount: u32 = 0;
