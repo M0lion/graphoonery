@@ -1,3 +1,4 @@
+#include <AppKit/AppKit.h>
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
 
@@ -78,20 +79,17 @@ bool pollMacEvent(MacEvent *outEvent) {
     return false;
   }
 
-  NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                                      untilDate:nil
-                                         inMode:NSDefaultRunLoopMode
-                                        dequeue:YES];
+  NSEvent *event;
+  while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                     untilDate:nil
+                                        inMode:NSDefaultRunLoopMode
+                                       dequeue:YES])) {
 
-  if (!event) {
-    outEvent->type = EventTypeNone;
-    return true;
+    [NSApp sendEvent:event];
+    [NSApp updateWindows];
   }
 
-  [NSApp sendEvent:event];
-  [NSApp updateWindows];
-
-  outEvent->type = (EventType)[event type];
+  outEvent->type = EventTypeNone;
   return true;
 }
 
