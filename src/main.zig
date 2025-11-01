@@ -9,6 +9,8 @@ const imageView = @import("vulkan/imageView.zig");
 const rp = @import("vulkan/renderPass.zig");
 const pipeline = @import("vulkan/pipeline.zig");
 const framebuffer = @import("vulkan/framebuffer.zig");
+const command = @import("vulkan/command.zig");
+const sync = @import("vulkan/sync.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
@@ -101,52 +103,16 @@ pub fn main() !void {
     );
 
     std.log.debug("Creating command pool", .{});
-    var poolInfo = c.VkCommandPoolCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext = null,
-        .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = @intCast(queueFamily),
-    };
-
-    var commandPool: c.VkCommandPool = undefined;
-    try vk.checkResult(c.vkCreateCommandPool(logicalDevice, &poolInfo, null, &commandPool));
+    const commandPool = try command.createCommandPool(logicalDevice, queueFamily);
 
     std.log.debug("Allocating command buffers", .{});
-    var allocInfo = c.VkCommandBufferAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = null,
-        .commandPool = commandPool,
-        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-
-    var commandBuffer: c.VkCommandBuffer = undefined;
-    try vk.checkResult(c.vkAllocateCommandBuffers(logicalDevice, &allocInfo, &commandBuffer));
+    const commandBuffer = try command.allocateCommandBuffer(logicalDevice, commandPool);
 
     std.log.debug("Creating sync objects", .{});
-    // Semaphores for GPU-GPU synchronization
-    var imageAvailableSemaphore: c.VkSemaphore = undefined;
-    var renderFinishedSemaphore: c.VkSemaphore = undefined;
-
-    // Fence for CPU-GPU synchronization
-    var inFlightFence: c.VkFence = undefined;
-
-    var semaphoreInfo = c.VkSemaphoreCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-    };
-
-    try vk.checkResult(c.vkCreateSemaphore(logicalDevice, &semaphoreInfo, null, &imageAvailableSemaphore));
-    try vk.checkResult(c.vkCreateSemaphore(logicalDevice, &semaphoreInfo, null, &renderFinishedSemaphore));
-
-    var fenceInfo = c.VkFenceCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .pNext = null,
-        .flags = c.VK_FENCE_CREATE_SIGNALED_BIT, // Start signaled so first frame doesn't wait
-    };
-
-    try vk.checkResult(c.vkCreateFence(logicalDevice, &fenceInfo, null, &inFlightFence));
+    const syncObjects = try sync.createSyncObjects(logicalDevice);
+    const imageAvailableSemaphore = syncObjects.imageAvailableSemaphore;
+    const renderFinishedSemaphore = syncObjects.renderFinishedSemaphore;
+    const inFlightFence = syncObjects.inFlightFence;
 
     // Flush all Wayland requests before rendering
     if (builtin.os.tag != .macos) {

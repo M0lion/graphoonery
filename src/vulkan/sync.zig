@@ -1,0 +1,53 @@
+const std = @import("std");
+const vk = @import("vk.zig");
+const c = vk.c;
+
+pub const SyncObjects = struct {
+    imageAvailableSemaphore: c.VkSemaphore,
+    renderFinishedSemaphore: c.VkSemaphore,
+    inFlightFence: c.VkFence,
+};
+
+pub fn createSyncObjects(logicalDevice: c.VkDevice) !SyncObjects {
+    var imageAvailableSemaphore: c.VkSemaphore = undefined;
+    var renderFinishedSemaphore: c.VkSemaphore = undefined;
+
+    var semaphoreInfo = c.VkSemaphoreCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+    };
+
+    try vk.checkResult(c.vkCreateSemaphore(
+        logicalDevice,
+        &semaphoreInfo,
+        null,
+        &imageAvailableSemaphore,
+    ));
+    try vk.checkResult(c.vkCreateSemaphore(
+        logicalDevice,
+        &semaphoreInfo,
+        null,
+        &renderFinishedSemaphore,
+    ));
+
+    var fenceInfo = c.VkFenceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = null,
+        .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
+    };
+
+    var inFlightFence: c.VkFence = undefined;
+    try vk.checkResult(c.vkCreateFence(
+        logicalDevice,
+        &fenceInfo,
+        null,
+        &inFlightFence,
+    ));
+
+    return SyncObjects{
+        .imageAvailableSemaphore = imageAvailableSemaphore,
+        .renderFinishedSemaphore = renderFinishedSemaphore,
+        .inFlightFence = inFlightFence,
+    };
+}
