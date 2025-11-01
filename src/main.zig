@@ -8,6 +8,7 @@ const sc = @import("vulkan/swapchain.zig");
 const imageView = @import("vulkan/imageView.zig");
 const rp = @import("vulkan/renderPass.zig");
 const pipeline = @import("vulkan/pipeline.zig");
+const framebuffer = @import("vulkan/framebuffer.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
@@ -90,25 +91,14 @@ pub fn main() !void {
     c.vkDestroyShaderModule(logicalDevice, fragShaderModule, null);
 
     std.log.debug("Creating framebuffers", .{});
-    var swapchainFramebuffers = try allocator.alloc(c.VkFramebuffer, swapchainImageViews.len);
-
-    for (swapchainImageViews, 0..) |view, i| {
-        const attachments = [_]c.VkImageView{view};
-
-        var framebufferInfo = c.VkFramebufferCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .pNext = null,
-            .flags = 0,
-            .renderPass = renderPass,
-            .attachmentCount = 1,
-            .pAttachments = &attachments,
-            .width = width,
-            .height = height,
-            .layers = 1,
-        };
-
-        try vk.checkResult(c.vkCreateFramebuffer(logicalDevice, &framebufferInfo, null, &swapchainFramebuffers[i]));
-    }
+    const swapchainFramebuffers = try framebuffer.createFramebuffers(
+        allocator,
+        logicalDevice,
+        swapchainImageViews,
+        renderPass,
+        width,
+        height,
+    );
 
     std.log.debug("Creating command pool", .{});
     var poolInfo = c.VkCommandPoolCreateInfo{
