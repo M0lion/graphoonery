@@ -4,6 +4,7 @@ const vk = @import("vulkan/vk.zig");
 const c = vk.c;
 const windows = @import("windows/window.zig");
 const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
+const pDevice = @import("vulkan/physicalDevice.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
@@ -29,80 +30,12 @@ pub fn main() !void {
 
     const width, const height = window.getWindowSize();
 
-    var deviceCount: u32 = 0;
-    try vk.checkResult(c.vkEnumeratePhysicalDevices(instance, &deviceCount, null));
-    const physicalDevices = try allocator.alloc(c.VkPhysicalDevice, deviceCount);
-    try vk.checkResult(c.vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.ptr));
-    std.log.info("{}", .{deviceCount});
+    const physicalDeviceResult = try pDevice.pickPhysicalDevice(instance, allocator, surface);
 
-    var physicalDeviceIndex: ?usize = null;
+    if (physicalDeviceResult == null) return;
 
-    var graphicsFamily: ?usize = null;
-    var presentFamily: ?usize = null;
-    var physicalDevice: c.VkPhysicalDevice = undefined;
-    for (physicalDevices, 0..) |device, deviceIndex| {
-        var properties: c.VkPhysicalDeviceProperties = undefined;
-        c.vkGetPhysicalDeviceProperties(device, &properties);
-        std.log.info("{s}", .{properties.deviceName});
-
-        var queueFamilyCount: u32 = 0;
-        c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, null);
-        const queueFamilies = try allocator.alloc(c.VkQueueFamilyProperties, queueFamilyCount);
-        c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.ptr);
-
-        // Get queue families
-        for (queueFamilies, 0..) |family, i| {
-            if (family.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
-                graphicsFamily = i;
-            }
-
-            var presentSupport: c.VkBool32 = c.VK_FALSE;
-            try vk.checkResult(c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), surface.?, &presentSupport));
-            if (presentSupport == c.VK_TRUE) {
-                presentFamily = i;
-            }
-
-            if (graphicsFamily.? == presentFamily.?) break;
-        }
-
-        if (graphicsFamily == null or presentFamily == null) continue;
-
-        var extensionCount: u32 = 0;
-        try vk.checkResult(c.vkEnumerateDeviceExtensionProperties(device, null, &extensionCount, null));
-
-        const availableExtensions = try allocator.alloc(c.VkExtensionProperties, extensionCount);
-        try vk.checkResult(c.vkEnumerateDeviceExtensionProperties(device, null, &extensionCount, availableExtensions.ptr));
-
-        var hasSwapchain = false;
-        for (availableExtensions) |ext| {
-            const name = @as([*:0]const u8, @ptrCast(&ext.extensionName));
-            if (std.mem.eql(u8, std.mem.span(name), c.VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
-                hasSwapchain = true;
-                break;
-            }
-        }
-
-        if (!hasSwapchain) continue;
-
-        var formatCount: u32 = 0;
-        try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, null));
-        var presentModeCount: u32 = 0;
-        try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, null));
-
-        if (formatCount == 0 or presentModeCount == 0) continue;
-
-        physicalDeviceIndex = deviceIndex;
-        physicalDevice = device;
-        break;
-    }
-
-    if (physicalDeviceIndex == null) return;
-    std.log.info("Chosen device: {?}", .{physicalDeviceIndex});
-
-    if (presentFamily.? != graphicsFamily.?) {
-        std.log.err("presentFamily {} is not the same as graphicsFamily {}, giving up", .{ presentFamily.?, graphicsFamily.? });
-        return;
-    }
+    const physicalDevice = physicalDeviceResult.?.device;
+    const queueFamily = physicalDeviceResult.?.queue;
 
     // Check Wayland presentation support (like vkcube does)
     if (builtin.os.tag != .macos) {
@@ -112,7 +45,7 @@ pub fn main() !void {
         );
 
         if (vkGetPhysicalDeviceWaylandPresentationSupportKHR) |presentSupportFn| {
-            const supported = presentSupportFn(physicalDevice, @intCast(presentFamily.?), window.windowHandle.display);
+            const supported = presentSupportFn(physicalDevice, @intCast(queueFamily), window.windowHandle.display);
             if (supported == c.VK_FALSE) {
                 std.log.err("Wayland presentation not supported on this device", .{});
                 return;
@@ -127,7 +60,7 @@ pub fn main() !void {
     const queuePriority: f32 = 1.0;
     const queueCreateInfo = c.VkDeviceQueueCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = @intCast(presentFamily.?),
+        .queueFamilyIndex = @intCast(queueFamily),
         .queueCount = 1,
         .pQueuePriorities = &queuePriority,
     };
@@ -145,7 +78,7 @@ pub fn main() !void {
     var logicalDevice: c.VkDevice = null;
     try vk.checkResult(c.vkCreateDevice(physicalDevice, &createInfo, null, &logicalDevice));
     var queue: c.VkQueue = undefined;
-    c.vkGetDeviceQueue(logicalDevice, @intCast(presentFamily.?), 0, &queue);
+    c.vkGetDeviceQueue(logicalDevice, @intCast(queueFamily), 0, &queue);
 
     std.log.debug("Getting capabilities", .{});
     var capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
@@ -557,7 +490,7 @@ pub fn main() !void {
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .pNext = null,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = @intCast(graphicsFamily.?),
+        .queueFamilyIndex = @intCast(queueFamily),
     };
 
     var commandPool: c.VkCommandPool = undefined;
