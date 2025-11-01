@@ -5,6 +5,7 @@ const c = vk.c;
 const windows = @import("windows/window.zig");
 const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
 const sc = @import("vulkan/swapchain.zig");
+const imageView = @import("vulkan/imageView.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
@@ -34,32 +35,12 @@ pub fn main() !void {
     std.log.debug("Creating image views", .{});
     const swapchainImages = try sc.getSwapchainImages(allocator, logicalDevice, swapchain);
     defer allocator.free(swapchainImages);
-    const swapchainImageViews = try allocator.alloc(c.VkImageView, swapchainImages.len);
-    for (swapchainImages, 0..) |image, imageIndex| {
-        var imageViewCreateInfo = c.VkImageViewCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .pNext = null,
-            .flags = 0,
-            .image = image,
-            .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
-            .format = swapchainImageFormat,
-            .components = .{
-                .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-            },
-            .subresourceRange = .{
-                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-        };
-
-        try vk.checkResult(c.vkCreateImageView(logicalDevice, &imageViewCreateInfo, null, &swapchainImageViews[imageIndex]));
-    }
+    const swapchainImageViews = try imageView.createImageViews(
+        allocator,
+        logicalDevice,
+        swapchainImages,
+        swapchainImageFormat,
+    );
 
     std.log.debug("Creating render pass", .{});
     // 1. Describe the color attachment
@@ -310,8 +291,8 @@ pub fn main() !void {
     std.log.debug("Creating framebuffers", .{});
     var swapchainFramebuffers = try allocator.alloc(c.VkFramebuffer, swapchainImageViews.len);
 
-    for (swapchainImageViews, 0..) |imageView, i| {
-        const attachments = [_]c.VkImageView{imageView};
+    for (swapchainImageViews, 0..) |view, i| {
+        const attachments = [_]c.VkImageView{view};
 
         var framebufferInfo = c.VkFramebufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
