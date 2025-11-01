@@ -11,6 +11,8 @@ const pipeline = @import("vulkan/pipeline.zig");
 const framebuffer = @import("vulkan/framebuffer.zig");
 const command = @import("vulkan/command.zig");
 const sync = @import("vulkan/sync.zig");
+const buffer = @import("vulkan/buffer.zig");
+const descriptor = @import("vulkan/descriptor.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
@@ -76,6 +78,33 @@ pub fn main() !void {
     var fragShaderModule: c.VkShaderModule = undefined;
     try vk.checkResult(c.vkCreateShaderModule(logicalDevice, &fragCreateInfo, null, &fragShaderModule));
 
+    std.log.debug("Creating uniform buffer", .{});
+    const uniformBufferSize = @sizeOf([16]f32); // mat4
+    const uniformBufferResult = try buffer.createBuffer(
+        vulkanContext.physicalDevice,
+        logicalDevice,
+        uniformBufferSize,
+        c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    );
+    const uniformBuffer = uniformBufferResult.buffer;
+    const uniformBufferMemory = uniformBufferResult.memory;
+
+    std.log.debug("Creating descriptor set layout", .{});
+    const descriptorSetLayout = try descriptor.createDescriptorSetLayout(logicalDevice);
+
+    std.log.debug("Creating descriptor pool", .{});
+    const descriptorPool = try descriptor.createDescriptorPool(logicalDevice);
+
+    std.log.debug("Allocating descriptor set", .{});
+    const descriptorSet = try descriptor.allocateDescriptorSet(
+        logicalDevice,
+        descriptorPool,
+        descriptorSetLayout,
+    );
+
+    descriptor.updateDescriptorSet(logicalDevice, descriptorSet, uniformBuffer, uniformBufferSize);
+
     std.log.debug("Creating pipeline", .{});
     const pipelineResult = try pipeline.createGraphicsPipeline(.{
         .logicalDevice = logicalDevice,
@@ -84,9 +113,9 @@ pub fn main() !void {
         .width = width,
         .height = height,
         .renderPass = renderPass,
+        .descriptorSetLayout = descriptorSetLayout,
     });
     const graphicsPipeline = pipelineResult.pipeline;
-    _ = pipelineResult.layout;
 
     std.log.debug("Cleaning up shaders", .{});
     c.vkDestroyShaderModule(logicalDevice, vertShaderModule, null);
@@ -122,6 +151,7 @@ pub fn main() !void {
     }
 
     // Event loop
+    var time: f32 = 0.0;
     while (window.pollEvents()) {
         try render(
             logicalDevice,
@@ -134,9 +164,14 @@ pub fn main() !void {
             width,
             height,
             graphicsPipeline,
+            pipelineResult.layout,
             renderFinishedSemaphore,
             queue,
+            uniformBufferMemory,
+            descriptorSet,
+            time,
         );
+        time += 0.01;
         std.Thread.sleep(100 * std.time.ns_per_ms); // Sleep 100ms between frames
     }
 }
@@ -152,14 +187,38 @@ fn render(
     width: u32,
     height: u32,
     graphicsPipeline: c.VkPipeline,
+    pipelineLayout: c.VkPipelineLayout,
     renderFinishedSemaphore: c.VkSemaphore,
     queue: c.VkQueue,
+    uniformBufferMemory: c.VkDeviceMemory,
+    descriptorSet: c.VkDescriptorSet,
+    time: f32,
 ) !void {
-    // 1. Wait for the previous frame to finish
+    // 1. Update uniform buffer with rotation
+    var data: ?*anyopaque = undefined;
+    try vk.checkResult(c.vkMapMemory(logicalDevice, uniformBufferMemory, 0, @sizeOf([16]f32), 0, &data));
+
+    const angle = time;
+    const cos_a = @cos(angle);
+    const sin_a = @sin(angle);
+
+    // Create a 2D rotation matrix in mat4 format
+    const transform = [16]f32{
+        cos_a, -sin_a, 0.0, 0.0,
+        sin_a,  cos_a, 0.0, 0.0,
+        0.0,    0.0,   1.0, 0.0,
+        0.0,    0.0,   0.0, 1.0,
+    };
+
+    const dest: [*]f32 = @ptrCast(@alignCast(data));
+    @memcpy(dest[0..16], &transform);
+    c.vkUnmapMemory(logicalDevice, uniformBufferMemory);
+
+    // 2. Wait for the previous frame to finish
     try vk.checkResult(c.vkWaitForFences(logicalDevice, 1, &inFlightFence, c.VK_TRUE, std.math.maxInt(u64)));
     try vk.checkResult(c.vkResetFences(logicalDevice, 1, &inFlightFence));
 
-    // 2. Acquire an image from the swapchain
+    // 3. Acquire an image from the swapchain
     var imageIndex: u32 = undefined;
     try vk.checkResult(c.vkAcquireNextImageKHR(logicalDevice, swapchain, std.math.maxInt(u64), imageAvailableSemaphore, null, &imageIndex));
 
@@ -195,8 +254,18 @@ fn render(
 
     c.vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, c.VK_SUBPASS_CONTENTS_INLINE);
 
-    // Bind pipeline and draw
+    // Bind pipeline, descriptor set, and draw
     c.vkCmdBindPipeline(commandBuffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    c.vkCmdBindDescriptorSets(
+        commandBuffer,
+        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        pipelineLayout,
+        0,
+        1,
+        &descriptorSet,
+        0,
+        null,
+    );
     c.vkCmdDraw(commandBuffer, 3, 1, 0, 0); // 3 vertices, 1 instance
 
     // End render pass and command buffer

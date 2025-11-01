@@ -9,6 +9,7 @@ pub const PipelineConfig = struct {
     width: u32,
     height: u32,
     renderPass: c.VkRenderPass,
+    descriptorSetLayout: c.VkDescriptorSetLayout,
 };
 
 pub const PipelineResult = struct {
@@ -139,8 +140,8 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .setLayoutCount = 0,
-        .pSetLayouts = null,
+        .setLayoutCount = 1,
+        .pSetLayouts = &config.descriptorSetLayout,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };
