@@ -4,11 +4,10 @@ const vk = @import("vulkan/vk.zig");
 const c = vk.c;
 const windows = @import("windows/window.zig");
 const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
+const sc = @import("vulkan/swapchain.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
-
-const sc = @import("vulkan/swapchain.zig");
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -23,117 +22,19 @@ pub fn main() !void {
     std.log.debug("Vulkan init", .{});
     var vulkanContext = try VulkanContext.init(&window, allocator);
     defer vulkanContext.deinit();
-    const surface = vulkanContext.surface;
-    const instance = vulkanContext.instance;
 
-    std.debug.print("Surface value: {any}\n", .{surface});
-    std.debug.print("Instance value: {any}\n", .{instance});
-
-    const width, const height = window.getWindowSize();
-
-    const physicalDevice = vulkanContext.physicalDevice;
-    const queueFamily = vulkanContext.queueFamily;
     const logicalDevice = vulkanContext.logicalDevice;
     const queue = vulkanContext.queue;
-
-    std.log.debug("Getting capabilities", .{});
-    var capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities));
-
-    var presentModeCount: u32 = 0;
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, null));
-    std.debug.print("Available present modes: {}\n", .{presentModeCount});
-
-    const presentModes = try allocator.alloc(c.VkPresentModeKHR, presentModeCount);
-    defer allocator.free(presentModes);
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.ptr));
-
-    for (presentModes, 0..) |mode, i| {
-        std.debug.print("  Mode {}: {}\n", .{ i, mode });
-    }
-
-    // Choose present mode - prefer FIFO (vsync) for Wayland compatibility, fallback to first available
-    var chosenPresentMode = presentModes[0];
-    for (presentModes) |mode| {
-        if (mode == c.VK_PRESENT_MODE_FIFO_KHR) {
-            chosenPresentMode = mode;
-            break;
-        }
-    }
-    std.debug.print("Using present mode: {}\n", .{chosenPresentMode});
-
-    var chosenImageCount = capabilities.minImageCount + 1;
-    if (capabilities.maxImageCount > 0 and chosenImageCount > capabilities.maxImageCount) {
-        chosenImageCount = capabilities.maxImageCount;
-    }
-    std.debug.print("Using image count: {}\n", .{chosenImageCount});
-
-    // Choose composite alpha
-    var compositeAlpha: c.VkCompositeAlphaFlagBitsKHR = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    if ((capabilities.supportedCompositeAlpha & c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) == 0) {
-        if ((capabilities.supportedCompositeAlpha & c.VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0) {
-            compositeAlpha = c.VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
-        } else if ((capabilities.supportedCompositeAlpha & c.VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0) {
-            compositeAlpha = c.VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
-        } else {
-            compositeAlpha = c.VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
-        }
-    }
-    std.debug.print("Using composite alpha: {}\n", .{compositeAlpha});
-
-    const chosenFormat = try sc.getSurfaceFormat(
-        allocator,
-        physicalDevice,
-        surface,
-    );
-
-    const swapchainImageFormat = chosenFormat.format;
-    var swapChainCreateInfo = c.VkSwapchainCreateInfoKHR{
-        .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = surface,
-        .minImageCount = chosenImageCount,
-        .imageFormat = swapchainImageFormat,
-        .imageColorSpace = chosenFormat.colorSpace,
-        .imageExtent = c.VkExtent2D{
-            .width = width,
-            .height = height,
-        },
-        .pNext = null,
-        .flags = 0,
-        .imageArrayLayers = 1,
-        .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = null,
-        .preTransform = capabilities.currentTransform,
-        .compositeAlpha = compositeAlpha,
-        .clipped = c.VK_TRUE,
-        .presentMode = chosenPresentMode,
-        .oldSwapchain = null,
-    };
-
-    std.log.debug("Creating swapchain", .{});
-    // Flush Wayland requests before creating swapchain
-    if (builtin.os.tag != .macos) {
-        if (window.windowHandle.display) |display| {
-            _ = wayland_c.c.wl_display_flush(display);
-        }
-    }
-    var swapchain: c.VkSwapchainKHR = undefined;
-    vk.checkResult(c.vkCreateSwapchainKHR(logicalDevice, &swapChainCreateInfo, null, &swapchain)) catch |err| {
-        std.log.err("Failed to create swapchain: {}\ncapabilities: {any}\ncreate info: {any}", .{ err, capabilities, swapChainCreateInfo });
-        return;
-    };
-
-    std.log.debug("Commiting surface", .{});
-    window.commit();
+    const queueFamily = vulkanContext.queueFamily;
+    const swapchain = vulkanContext.swapchain;
+    const swapchainImageFormat = vulkanContext.swapchainImageFormat;
+    const width = vulkanContext.swapchainWidth;
+    const height = vulkanContext.swapchainHeight;
 
     std.log.debug("Creating image views", .{});
-    var imageCount: u32 = 0;
-    try vk.checkResult(c.vkGetSwapchainImagesKHR(logicalDevice, swapchain, &imageCount, null));
-    const swapchainImages = try allocator.alloc(c.VkImage, imageCount);
-    try vk.checkResult(c.vkGetSwapchainImagesKHR(logicalDevice, swapchain, &imageCount, swapchainImages.ptr));
-    const swapchainImageViews = try allocator.alloc(c.VkImageView, imageCount);
+    const swapchainImages = try sc.getSwapchainImages(allocator, logicalDevice, swapchain);
+    defer allocator.free(swapchainImages);
+    const swapchainImageViews = try allocator.alloc(c.VkImageView, swapchainImages.len);
     for (swapchainImages, 0..) |image, imageIndex| {
         var imageViewCreateInfo = c.VkImageViewCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,

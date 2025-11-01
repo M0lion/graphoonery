@@ -112,6 +112,7 @@ pub const SwapchainConfig = struct {
     physicalDevice: c.VkPhysicalDevice,
     logicalDevice: c.VkDevice,
     surface: c.VkSurfaceKHR,
+    surfaceFormat: c.VkSurfaceFormatKHR,
     width: u32,
     height: u32,
     allocator: std.mem.Allocator,
@@ -129,14 +130,13 @@ pub fn createSwapchain(config: SwapchainConfig) !c.VkSwapchainKHR {
     const presentMode = try getPresentMode(config.allocator, config.physicalDevice, config.surface);
     const imageCount = getImageCount(capabilities);
     const compositeAlpha = getCompositeAlpha(capabilities);
-    const surfaceFormat = try getSurfaceFormat(config.allocator, config.physicalDevice, config.surface);
 
     var swapChainCreateInfo = c.VkSwapchainCreateInfoKHR{
         .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = config.surface,
         .minImageCount = imageCount,
-        .imageFormat = surfaceFormat.format,
-        .imageColorSpace = surfaceFormat.colorSpace,
+        .imageFormat = config.surfaceFormat.format,
+        .imageColorSpace = config.surfaceFormat.colorSpace,
         .imageExtent = c.VkExtent2D{
             .width = config.width,
             .height = config.height,

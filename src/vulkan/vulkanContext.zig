@@ -9,6 +9,8 @@ const createInstance = @import("instance.zig").createInstance;
 const s = @import("surface.zig");
 const pDevice = @import("physicalDevice.zig");
 const lDevice = @import("logicalDevice.zig");
+const sc = @import("swapchain.zig");
+const wayland_c = if (builtin.os.tag != .macos) @import("../windows/wayland_c.zig") else struct {};
 
 pub const VulkanContextError = error{
     CouldNotFindPDevice,
@@ -21,6 +23,10 @@ pub const VulkanContext = struct {
     queueFamily: u32,
     logicalDevice: c.VkDevice,
     queue: c.VkQueue,
+    swapchain: c.VkSwapchainKHR,
+    swapchainImageFormat: c.VkFormat,
+    swapchainWidth: u32,
+    swapchainHeight: u32,
 
     pub fn init(window: *Window, allocator: std.mem.Allocator) !VulkanContext {
         const instance = try createInstance(.{
@@ -56,6 +62,34 @@ pub const VulkanContext = struct {
         var queue: c.VkQueue = undefined;
         c.vkGetDeviceQueue(logicalDevice, @intCast(queueFamily), 0, &queue);
 
+        const width, const height = window.getWindowSize();
+
+        const surfaceFormat = try sc.getSurfaceFormat(
+            allocator,
+            physicalDevice,
+            surface,
+        );
+
+        // Flush Wayland requests before creating swapchain
+        if (builtin.os.tag != .macos) {
+            if (window.windowHandle.display) |display| {
+                _ = wayland_c.c.wl_display_flush(display);
+            }
+        }
+
+        const swapchain = try sc.createSwapchain(.{
+            .physicalDevice = physicalDevice,
+            .logicalDevice = logicalDevice,
+            .surface = surface,
+            .surfaceFormat = surfaceFormat,
+            .width = width,
+            .height = height,
+            .allocator = allocator,
+        });
+
+        std.log.debug("Commiting surface", .{});
+        window.commit();
+
         return VulkanContext{
             .instance = instance,
             .surface = surface,
@@ -63,10 +97,16 @@ pub const VulkanContext = struct {
             .queueFamily = queueFamily,
             .logicalDevice = logicalDevice,
             .queue = queue,
+            .swapchain = swapchain,
+            .swapchainImageFormat = surfaceFormat.format,
+            .swapchainWidth = width,
+            .swapchainHeight = height,
         };
     }
 
     pub fn deinit(self: *VulkanContext) void {
+        c.vkDestroySwapchainKHR(self.logicalDevice, self.swapchain, null);
+        c.vkDestroyDevice(self.logicalDevice, null);
         c.vkDestroySurfaceKHR(self.instance, self.surface, null);
         c.vkDestroyInstance(self.instance, null);
     }
