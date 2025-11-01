@@ -6,6 +6,7 @@ const windows = @import("windows/window.zig");
 const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
 const sc = @import("vulkan/swapchain.zig");
 const imageView = @import("vulkan/imageView.zig");
+const rp = @import("vulkan/renderPass.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
@@ -43,54 +44,7 @@ pub fn main() !void {
     );
 
     std.log.debug("Creating render pass", .{});
-    // 1. Describe the color attachment
-    var colorAttachment = c.VkAttachmentDescription{
-        .flags = 0,
-        .format = swapchainImageFormat, // Same format as your swapchain
-        .samples = c.VK_SAMPLE_COUNT_1_BIT, // No multisampling
-        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR, // Clear to a color at start
-        .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE, // Store the result
-        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE, // No stencil
-        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED, // Don't care about initial layout
-        .finalLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, // Ready for presentation
-    };
-
-    // 2. Reference the attachment in a subpass
-    var colorAttachmentRef = c.VkAttachmentReference{
-        .attachment = 0, // Index in the attachment descriptions array
-        .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    };
-
-    // 3. Create a subpass
-    var subpass = c.VkSubpassDescription{
-        .flags = 0,
-        .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-        .colorAttachmentCount = 1,
-        .pColorAttachments = &colorAttachmentRef,
-        .inputAttachmentCount = 0,
-        .pInputAttachments = null,
-        .pResolveAttachments = null,
-        .pDepthStencilAttachment = null,
-        .preserveAttachmentCount = 0,
-        .pPreserveAttachments = null,
-    };
-
-    // 4. Create the render pass
-    var createRenderPassInfo = c.VkRenderPassCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .attachmentCount = 1,
-        .pAttachments = &colorAttachment,
-        .subpassCount = 1,
-        .pSubpasses = &subpass,
-        .dependencyCount = 0,
-        .pDependencies = null,
-    };
-
-    var renderPass: c.VkRenderPass = undefined;
-    try vk.checkResult(c.vkCreateRenderPass(logicalDevice, &createRenderPassInfo, null, &renderPass));
+    const renderPass = try rp.createRenderPass(logicalDevice, swapchainImageFormat);
 
     std.log.debug("Loading shaders", .{});
     const vertShaderCode = @embedFile("shaders/vert.spv");
