@@ -25,8 +25,8 @@ pub fn createMetalSurface(
 }
 
 pub const CreateWaylandSurfaceArgs = struct {
-    display: wayland.c.wl_display,
-    surface: wayland.c.wl_surface,
+    display: ?*wayland.c.wl_display,
+    surface: ?*wayland.c.wl_surface,
 };
 
 pub fn createWaylandSurface(
@@ -42,4 +42,5 @@ pub fn createWaylandSurface(
         .flags = 0,
     };
     try vk.checkResult(c.vkCreateWaylandSurfaceKHR(instance, &surface_create_info, null, &surface));
+    return surface;
 }

@@ -86,7 +86,6 @@ pub const Window = struct {
             },
             .linux => {
                 self.windowHandle.dispatch();
-                std.log.debug("{*} - {}", .{ &self.windowHandle, self.windowHandle.should_close });
                 return !self.windowHandle.should_close;
             },
         }

@@ -4,10 +4,11 @@ const vk = @import("vulkan/vk.zig");
 const c = vk.c;
 const windows = @import("windows/window.zig");
 const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
-const pDevice = @import("vulkan/physicalDevice.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
+
+const sc = @import("vulkan/swapchain.zig");
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -20,7 +21,7 @@ pub fn main() !void {
     defer window.deinit();
 
     std.log.debug("Vulkan init", .{});
-    var vulkanContext = try VulkanContext.init(&window);
+    var vulkanContext = try VulkanContext.init(&window, allocator);
     defer vulkanContext.deinit();
     const surface = vulkanContext.surface;
     const instance = vulkanContext.instance;
@@ -30,79 +31,14 @@ pub fn main() !void {
 
     const width, const height = window.getWindowSize();
 
-    const physicalDeviceResult = try pDevice.pickPhysicalDevice(instance, allocator, surface);
-
-    if (physicalDeviceResult == null) return;
-
-    const physicalDevice = physicalDeviceResult.?.device;
-    const queueFamily = physicalDeviceResult.?.queue;
-
-    // Check Wayland presentation support (like vkcube does)
-    if (builtin.os.tag != .macos) {
-        const vkGetPhysicalDeviceWaylandPresentationSupportKHR = @as(
-            ?*const fn (c.VkPhysicalDevice, u32, ?*wayland_c.c.wl_display) callconv(.c) c.VkBool32,
-            @ptrCast(c.vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceWaylandPresentationSupportKHR")),
-        );
-
-        if (vkGetPhysicalDeviceWaylandPresentationSupportKHR) |presentSupportFn| {
-            const supported = presentSupportFn(physicalDevice, @intCast(queueFamily), window.windowHandle.display);
-            if (supported == c.VK_FALSE) {
-                std.log.err("Wayland presentation not supported on this device", .{});
-                return;
-            }
-            std.log.info("Wayland presentation supported", .{});
-        } else {
-            std.log.warn("vkGetPhysicalDeviceWaylandPresentationSupportKHR not available", .{});
-        }
-    }
-
-    // Create logical device
-    const queuePriority: f32 = 1.0;
-    const queueCreateInfo = c.VkDeviceQueueCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = @intCast(queueFamily),
-        .queueCount = 1,
-        .pQueuePriorities = &queuePriority,
-    };
-    const deviceExtensions = [_][*:0]const u8{
-        c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    };
-    const createInfo = c.VkDeviceCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pQueueCreateInfos = &queueCreateInfo,
-        .queueCreateInfoCount = 1,
-        .pEnabledFeatures = null,
-        .enabledExtensionCount = deviceExtensions.len,
-        .ppEnabledExtensionNames = &deviceExtensions,
-    };
-    var logicalDevice: c.VkDevice = null;
-    try vk.checkResult(c.vkCreateDevice(physicalDevice, &createInfo, null, &logicalDevice));
-    var queue: c.VkQueue = undefined;
-    c.vkGetDeviceQueue(logicalDevice, @intCast(queueFamily), 0, &queue);
+    const physicalDevice = vulkanContext.physicalDevice;
+    const queueFamily = vulkanContext.queueFamily;
+    const logicalDevice = vulkanContext.logicalDevice;
+    const queue = vulkanContext.queue;
 
     std.log.debug("Getting capabilities", .{});
     var capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
     try vk.checkResult(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities));
-
-    var formatCount: u32 = 0;
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, null));
-    std.debug.print("Available formats: {}\n", .{formatCount});
-
-    const formats = try allocator.alloc(c.VkSurfaceFormatKHR, formatCount);
-    defer allocator.free(formats);
-    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, formats.ptr));
-
-    // Choose format - look for BGRA8_SRGB, otherwise use first
-    var chosenFormat = formats[0];
-    for (formats) |format| {
-        if (format.format == c.VK_FORMAT_B8G8R8A8_SRGB and
-            format.colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
-        {
-            chosenFormat = format;
-            break;
-        }
-    }
-    std.debug.print("Chosen format: format={}, colorSpace={}\n", .{ chosenFormat.format, chosenFormat.colorSpace });
 
     var presentModeCount: u32 = 0;
     try vk.checkResult(c.vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, null));
@@ -144,6 +80,12 @@ pub fn main() !void {
         }
     }
     std.debug.print("Using composite alpha: {}\n", .{compositeAlpha});
+
+    const chosenFormat = try sc.getSurfaceFormat(
+        allocator,
+        physicalDevice,
+        surface,
+    );
 
     const swapchainImageFormat = chosenFormat.format;
     var swapChainCreateInfo = c.VkSwapchainCreateInfoKHR{

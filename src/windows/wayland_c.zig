@@ -85,8 +85,6 @@ pub const WaylandWindow = struct {
 
     pub fn dispatch(self: *WaylandWindow) void {
         if (self.display) |display| {
-            // Use proper Wayland event loop pattern for multi-queue coordination
-            // This is critical when Vulkan creates its own internal event queue
             while (c.wl_display_prepare_read(display) != 0) {
                 _ = c.wl_display_dispatch_pending(display);
             }

@@ -6,11 +6,6 @@ pub const c = @cImport({
 });
 
 // Re-export common types for convenience
-pub const Instance = c.VkInstance;
-pub const PhysicalDevice = c.VkPhysicalDevice;
-pub const Device = c.VkDevice;
-pub const SurfaceKHR = c.VkSurfaceKHR;
-pub const SwapchainKHR = c.VkSwapchainKHR;
 pub const Result = c.VkResult;
 
 pub const SUCCESS = c.VK_SUCCESS;
