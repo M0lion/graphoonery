@@ -229,7 +229,7 @@ fn render(
     try vk.checkResult(c.vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
     // Begin render pass
-    const clearColor = c.VkClearValue{ .color = .{ .float32 = [_]f32{ 1.0, 0.0, 0.0, 1.0 } } };
+    const clearColor = c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } };
 
     var renderPassInfo = c.VkRenderPassBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
