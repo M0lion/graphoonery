@@ -51,3 +51,11 @@ pub fn createSyncObjects(logicalDevice: c.VkDevice) !SyncObjects {
         .inFlightFence = inFlightFence,
     };
 }
+
+pub fn destroySemaphore(logicalDevice: c.VkDevice, semaphore: c.VkSemaphore) void {
+    c.vkDestroySemaphore(logicalDevice, semaphore, null);
+}
+
+pub fn destroyFence(logicalDevice: c.VkDevice, fence: c.VkFence) void {
+    c.vkDestroyFence(logicalDevice, fence, null);
+}

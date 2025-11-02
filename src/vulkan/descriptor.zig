@@ -30,6 +30,13 @@ pub fn createDescriptorSetLayout(logicalDevice: c.VkDevice) !c.VkDescriptorSetLa
     return descriptorSetLayout;
 }
 
+pub fn destroyDescriptorSetLayout(
+    logicalDevice: c.VkDevice,
+    descriptorSetLayout: c.VkDescriptorSetLayout,
+) void {
+    c.vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, null);
+}
+
 pub fn createDescriptorPool(logicalDevice: c.VkDevice) !c.VkDescriptorPool {
     var poolSize = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -54,6 +61,13 @@ pub fn createDescriptorPool(logicalDevice: c.VkDevice) !c.VkDescriptorPool {
     ));
 
     return descriptorPool;
+}
+
+pub fn destroyDescriptorPool(
+    logicalDevice: c.VkDevice,
+    descriptorPool: c.VkDescriptorPool,
+) void {
+    c.vkDestroyDescriptorPool(logicalDevice, descriptorPool, null);
 }
 
 pub fn allocateDescriptorSet(

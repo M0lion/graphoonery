@@ -47,6 +47,14 @@ pub fn createBuffer(
     return .{ .buffer = buffer, .memory = bufferMemory };
 }
 
+pub fn destroyBuffer(logicalDevice: c.VkDevice, buffer: c.VkBuffer) void {
+    c.vkDestroyBuffer(logicalDevice, buffer, null);
+}
+
+pub fn freeMemory(logicalDevice: c.VkDevice, memory: c.VkDeviceMemory) void {
+    c.vkFreeMemory(logicalDevice, memory, null);
+}
+
 fn findMemoryType(
     physicalDevice: c.VkPhysicalDevice,
     typeFilter: u32,

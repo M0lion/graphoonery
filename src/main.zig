@@ -13,6 +13,7 @@ const descriptor = @import("vulkan/descriptor.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
     const c = struct {};
 };
+const math = @import("math/index.zig");
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -68,12 +69,16 @@ pub fn main() !void {
     );
     const uniformBuffer = uniformBufferResult.buffer;
     const uniformBufferMemory = uniformBufferResult.memory;
+    defer buffer.destroyBuffer(logicalDevice, uniformBuffer);
+    defer buffer.freeMemory(logicalDevice, uniformBufferMemory);
 
     std.log.debug("Creating descriptor set layout", .{});
     const descriptorSetLayout = try descriptor.createDescriptorSetLayout(logicalDevice);
+    defer descriptor.destroyDescriptorSetLayout(logicalDevice, descriptorSetLayout);
 
     std.log.debug("Creating descriptor pool", .{});
     const descriptorPool = try descriptor.createDescriptorPool(logicalDevice);
+    defer descriptor.destroyDescriptorPool(logicalDevice, descriptorPool);
 
     std.log.debug("Allocating descriptor set", .{});
     const descriptorSet = try descriptor.allocateDescriptorSet(
@@ -94,6 +99,8 @@ pub fn main() !void {
         .renderPass = vulkanContext.renderPass,
         .descriptorSetLayout = descriptorSetLayout,
     });
+    defer pipeline.destroyPipeline(logicalDevice, pipelineResult.pipeline);
+    defer pipeline.destroyPipelineLayout(logicalDevice, pipelineResult.layout);
     const graphicsPipeline = pipelineResult.pipeline;
 
     std.log.debug("Cleaning up shaders", .{});
@@ -102,15 +109,20 @@ pub fn main() !void {
 
     std.log.debug("Creating command pool", .{});
     const commandPool = try command.createCommandPool(logicalDevice, queueFamily);
+    defer command.destroyCommandPool(logicalDevice, commandPool);
 
     std.log.debug("Allocating command buffers", .{});
     const commandBuffer = try command.allocateCommandBuffer(logicalDevice, commandPool);
+    defer command.freeCommandBuffer(logicalDevice, commandPool, commandBuffer);
 
     std.log.debug("Creating sync objects", .{});
     const syncObjects = try sync.createSyncObjects(logicalDevice);
     const imageAvailableSemaphore = syncObjects.imageAvailableSemaphore;
     const renderFinishedSemaphore = syncObjects.renderFinishedSemaphore;
     const inFlightFence = syncObjects.inFlightFence;
+    defer sync.destroySemaphore(logicalDevice, imageAvailableSemaphore);
+    defer sync.destroySemaphore(logicalDevice, renderFinishedSemaphore);
+    defer sync.destroyFence(logicalDevice, inFlightFence);
 
     // Flush all Wayland requests before rendering
     if (builtin.os.tag != .macos) {
@@ -148,6 +160,7 @@ pub fn main() !void {
         time += 0.001;
         std.Thread.sleep(10 * std.time.ns_per_ms); // Sleep 100ms between frames
     }
+    try vk.checkResult(c.vkDeviceWaitIdle(logicalDevice));
 }
 
 fn render(
@@ -170,7 +183,7 @@ fn render(
 ) !void {
     // 1. Update uniform buffer with rotation
     var data: ?*anyopaque = undefined;
-    try vk.checkResult(c.vkMapMemory(logicalDevice, uniformBufferMemory, 0, @sizeOf([16]f32), 0, &data));
+    try vk.checkResult(c.vkMapMemory(logicalDevice, uniformBufferMemory, 0, @sizeOf([16]f32) * 2, 0, &data));
 
     const angle = time * 5;
     const cos_a = @cos(angle);
@@ -186,6 +199,14 @@ fn render(
 
     const dest: [*]f32 = @ptrCast(@alignCast(data));
     @memcpy(dest[0..16], &transform);
+
+    const projectionMatrix = math.Mat4.createOrtho2D(
+        @as(f32, @floatFromInt(width)),
+        @as(f32, @floatFromInt(height)),
+        4,
+    );
+    @memcpy(dest[16..32], &projectionMatrix.m);
+
     c.vkUnmapMemory(logicalDevice, uniformBufferMemory);
 
     // 2. Wait for the previous frame to finish
@@ -263,7 +284,7 @@ fn render(
     };
     c.vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    c.vkCmdDraw(commandBuffer, 3, 1, 0, 0); // 3 vertices, 1 instance
+    c.vkCmdDraw(commandBuffer, 6, 1, 0, 0); // 3 vertices, 1 instance
 
     // End render pass and command buffer
     c.vkCmdEndRenderPass(commandBuffer);

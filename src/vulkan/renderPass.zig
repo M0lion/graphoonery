@@ -58,3 +58,7 @@ pub fn createRenderPass(
 
     return renderPass;
 }
+
+pub fn destroyRenderPass(logicalDevice: c.VkDevice, renderPass: c.VkRenderPass) void {
+    c.vkDestroyRenderPass(logicalDevice, renderPass, null);
+}

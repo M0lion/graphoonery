@@ -204,3 +204,11 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .layout = pipelineLayout,
     };
 }
+
+pub fn destroyPipeline(logicalDevice: c.VkDevice, pipeline: c.VkPipeline) void {
+    c.vkDestroyPipeline(logicalDevice, pipeline, null);
+}
+
+pub fn destroyPipelineLayout(logicalDevice: c.VkDevice, pipelineLayout: c.VkPipelineLayout) void {
+    c.vkDestroyPipelineLayout(logicalDevice, pipelineLayout, null);
+}

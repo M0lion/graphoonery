@@ -196,7 +196,8 @@ pub const VulkanContext = struct {
     }
 
     pub fn deinit(self: *VulkanContext) void {
-        c.vkDestroySwapchainKHR(self.logicalDevice, self.swapchain, null);
+        self.cleanupSwapchain();
+        rp.destroyRenderPass(self.logicalDevice, self.renderPass);
         c.vkDestroyDevice(self.logicalDevice, null);
         c.vkDestroySurfaceKHR(self.instance, self.surface, null);
         c.vkDestroyInstance(self.instance, null);

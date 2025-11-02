@@ -19,6 +19,10 @@ pub fn createCommandPool(
     return commandPool;
 }
 
+pub fn destroyCommandPool(logicalDevice: c.VkDevice, commandPool: c.VkCommandPool) void {
+    c.vkDestroyCommandPool(logicalDevice, commandPool, null);
+}
+
 pub fn allocateCommandBuffer(
     logicalDevice: c.VkDevice,
     commandPool: c.VkCommandPool,
@@ -35,4 +39,12 @@ pub fn allocateCommandBuffer(
     try vk.checkResult(c.vkAllocateCommandBuffers(logicalDevice, &allocInfo, &commandBuffer));
 
     return commandBuffer;
+}
+
+pub fn freeCommandBuffer(
+    device: c.VkDevice,
+    commandPool: c.VkCommandPool,
+    buffer: c.VkCommandBuffer,
+) void {
+    c.vkFreeCommandBuffers(device, commandPool, 1, &buffer);
 }
