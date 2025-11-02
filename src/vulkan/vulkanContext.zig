@@ -11,12 +11,17 @@ const pDevice = @import("physicalDevice.zig");
 const lDevice = @import("logicalDevice.zig");
 const sc = @import("swapchain.zig");
 const wayland_c = if (builtin.os.tag != .macos) @import("../windows/wayland_c.zig") else struct {};
+const fb = @import("framebuffer.zig");
+const iv = @import("imageView.zig");
+const rp = @import("renderPass.zig");
 
 pub const VulkanContextError = error{
     CouldNotFindPDevice,
 };
 
 pub const VulkanContext = struct {
+    window: *Window,
+    allocator: std.mem.Allocator,
     surface: c.VkSurfaceKHR,
     instance: c.VkInstance,
     physicalDevice: c.VkPhysicalDevice,
@@ -25,8 +30,12 @@ pub const VulkanContext = struct {
     queue: c.VkQueue,
     swapchain: c.VkSwapchainKHR,
     swapchainImageFormat: c.VkFormat,
-    swapchainWidth: u32,
-    swapchainHeight: u32,
+    width: u32,
+    height: u32,
+    surfaceFormat: c.VkSurfaceFormatKHR,
+    renderPass: c.VkRenderPass,
+    swapchainImageViews: []c.VkImageView,
+    framebuffers: []c.VkFramebuffer,
 
     pub fn init(window: *Window, allocator: std.mem.Allocator) !VulkanContext {
         const instance = try createInstance(.{
@@ -62,6 +71,14 @@ pub const VulkanContext = struct {
         var queue: c.VkQueue = undefined;
         c.vkGetDeviceQueue(logicalDevice, @intCast(queueFamily), 0, &queue);
 
+        // Flush Wayland requests before creating swapchain
+        if (builtin.os.tag != .macos) {
+            if (window.windowHandle.display) |display| {
+                _ = wayland_c.c.wl_display_flush(display);
+            }
+        }
+
+        std.log.debug("Getting window dimensions", .{});
         const width, const height = window.getWindowSize();
 
         const surfaceFormat = try sc.getSurfaceFormat(
@@ -69,13 +86,6 @@ pub const VulkanContext = struct {
             physicalDevice,
             surface,
         );
-
-        // Flush Wayland requests before creating swapchain
-        if (builtin.os.tag != .macos) {
-            if (window.windowHandle.display) |display| {
-                _ = wayland_c.c.wl_display_flush(display);
-            }
-        }
 
         const swapchain = try sc.createSwapchain(.{
             .physicalDevice = physicalDevice,
@@ -87,10 +97,35 @@ pub const VulkanContext = struct {
             .allocator = allocator,
         });
 
+        std.log.debug("Creating image views", .{});
+        const swapchainImages = try sc.getSwapchainImages(allocator, logicalDevice, swapchain);
+        defer allocator.free(swapchainImages);
+        const swapchainImageViews = try iv.createImageViews(
+            allocator,
+            logicalDevice,
+            swapchainImages,
+            surfaceFormat.format,
+        );
+
+        std.log.debug("Creating render pass", .{});
+        const renderPass = try rp.createRenderPass(logicalDevice, surfaceFormat.format);
+
+        std.log.debug("Creating framebuffers", .{});
+        const framebuffers = try fb.createFramebuffers(
+            allocator,
+            logicalDevice,
+            swapchainImageViews,
+            renderPass,
+            width,
+            height,
+        );
+
         std.log.debug("Commiting surface", .{});
         window.commit();
 
         return VulkanContext{
+            .window = window,
+            .allocator = allocator,
             .instance = instance,
             .surface = surface,
             .physicalDevice = physicalDevice,
@@ -99,9 +134,65 @@ pub const VulkanContext = struct {
             .queue = queue,
             .swapchain = swapchain,
             .swapchainImageFormat = surfaceFormat.format,
-            .swapchainWidth = width,
-            .swapchainHeight = height,
+            .width = width,
+            .height = height,
+            .surfaceFormat = surfaceFormat,
+            .renderPass = renderPass,
+            .swapchainImageViews = swapchainImageViews,
+            .framebuffers = framebuffers,
         };
+    }
+
+    pub fn resize(self: *VulkanContext) !void {
+        //const oldSwapchain = self.swapchain;
+        const width, const height = self.window.getWindowSize();
+        self.width = width;
+        self.height = height;
+        try vk.checkResult(c.vkDeviceWaitIdle(self.logicalDevice));
+        self.cleanupSwapchain();
+        self.swapchain = try sc.createSwapchain(.{
+            .physicalDevice = self.physicalDevice,
+            .logicalDevice = self.logicalDevice,
+            .surface = self.surface,
+            .surfaceFormat = self.surfaceFormat,
+            .width = width,
+            .height = height,
+            .allocator = self.allocator,
+        });
+
+        const swapchainImages = try sc.getSwapchainImages(
+            self.allocator,
+            self.logicalDevice,
+            self.swapchain,
+        );
+        defer self.allocator.free(swapchainImages);
+        self.swapchainImageViews = try iv.createImageViews(
+            self.allocator,
+            self.logicalDevice,
+            swapchainImages,
+            self.surfaceFormat.format,
+        );
+
+        self.framebuffers = try fb.createFramebuffers(
+            self.allocator,
+            self.logicalDevice,
+            self.swapchainImageViews,
+            self.renderPass,
+            width,
+            height,
+        );
+    }
+
+    fn cleanupSwapchain(self: *VulkanContext) void {
+        for (self.framebuffers) |framebuffer| {
+            c.vkDestroyFramebuffer(self.logicalDevice, framebuffer, null);
+        }
+
+        for (self.swapchainImageViews) |imageView| {
+            c.vkDestroyImageView(self.logicalDevice, imageView, null);
+        }
+
+        c.vkDestroySwapchainKHR(self.logicalDevice, self.swapchain, null);
     }
 
     pub fn deinit(self: *VulkanContext) void {

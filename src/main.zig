@@ -5,10 +5,7 @@ const c = vk.c;
 const windows = @import("windows/window.zig");
 const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
 const sc = @import("vulkan/swapchain.zig");
-const imageView = @import("vulkan/imageView.zig");
-const rp = @import("vulkan/renderPass.zig");
 const pipeline = @import("vulkan/pipeline.zig");
-const framebuffer = @import("vulkan/framebuffer.zig");
 const command = @import("vulkan/command.zig");
 const sync = @import("vulkan/sync.zig");
 const buffer = @import("vulkan/buffer.zig");
@@ -19,7 +16,7 @@ const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig")
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
-    var allocator = gpa.allocator();
+    const allocator = gpa.allocator();
 
     std.log.debug("Window init", .{});
     var window = try windows.Window.init(allocator);
@@ -34,24 +31,6 @@ pub fn main() !void {
     const logicalDevice = vulkanContext.logicalDevice;
     const queue = vulkanContext.queue;
     const queueFamily = vulkanContext.queueFamily;
-    const swapchain = vulkanContext.swapchain;
-    const swapchainImageFormat = vulkanContext.swapchainImageFormat;
-    const width = vulkanContext.swapchainWidth;
-    const height = vulkanContext.swapchainHeight;
-
-    std.log.debug("Creating image views", .{});
-    const swapchainImages = try sc.getSwapchainImages(allocator, logicalDevice, swapchain);
-    defer allocator.free(swapchainImages);
-    const swapchainImageViews = try imageView.createImageViews(
-        allocator,
-        logicalDevice,
-        swapchainImages,
-        swapchainImageFormat,
-    );
-
-    std.log.debug("Creating render pass", .{});
-    const renderPass = try rp.createRenderPass(logicalDevice, swapchainImageFormat);
-
     std.log.debug("Loading shaders", .{});
     const vertShaderCode = @embedFile("shaders/vert.spv");
     const fragShaderCode = @embedFile("shaders/frag.spv");
@@ -79,7 +58,7 @@ pub fn main() !void {
     try vk.checkResult(c.vkCreateShaderModule(logicalDevice, &fragCreateInfo, null, &fragShaderModule));
 
     std.log.debug("Creating uniform buffer", .{});
-    const uniformBufferSize = @sizeOf([16]f32); // mat4
+    const uniformBufferSize = @sizeOf([16]f32) * 2; // mat4
     const uniformBufferResult = try buffer.createBuffer(
         vulkanContext.physicalDevice,
         logicalDevice,
@@ -110,9 +89,9 @@ pub fn main() !void {
         .logicalDevice = logicalDevice,
         .vertShaderModule = vertShaderModule,
         .fragShaderModule = fragShaderModule,
-        .width = width,
-        .height = height,
-        .renderPass = renderPass,
+        .width = vulkanContext.width,
+        .height = vulkanContext.height,
+        .renderPass = vulkanContext.renderPass,
         .descriptorSetLayout = descriptorSetLayout,
     });
     const graphicsPipeline = pipelineResult.pipeline;
@@ -120,16 +99,6 @@ pub fn main() !void {
     std.log.debug("Cleaning up shaders", .{});
     c.vkDestroyShaderModule(logicalDevice, vertShaderModule, null);
     c.vkDestroyShaderModule(logicalDevice, fragShaderModule, null);
-
-    std.log.debug("Creating framebuffers", .{});
-    const swapchainFramebuffers = try framebuffer.createFramebuffers(
-        allocator,
-        logicalDevice,
-        swapchainImageViews,
-        renderPass,
-        width,
-        height,
-    );
 
     std.log.debug("Creating command pool", .{});
     const commandPool = try command.createCommandPool(logicalDevice, queueFamily);
@@ -153,14 +122,19 @@ pub fn main() !void {
     // Event loop
     var time: f32 = 0.0;
     while (window.pollEvents()) {
+        const width, const height = window.getWindowSize();
+        if (vulkanContext.width != width or vulkanContext.height != height) {
+            try vulkanContext.resize();
+        }
+
         try render(
             logicalDevice,
             inFlightFence,
-            swapchain,
+            vulkanContext.swapchain,
             imageAvailableSemaphore,
             commandBuffer,
-            renderPass,
-            swapchainFramebuffers,
+            vulkanContext.renderPass,
+            vulkanContext.framebuffers,
             width,
             height,
             graphicsPipeline,
@@ -171,8 +145,8 @@ pub fn main() !void {
             descriptorSet,
             time,
         );
-        time += 0.01;
-        std.Thread.sleep(100 * std.time.ns_per_ms); // Sleep 100ms between frames
+        time += 0.001;
+        std.Thread.sleep(10 * std.time.ns_per_ms); // Sleep 100ms between frames
     }
 }
 
@@ -198,16 +172,16 @@ fn render(
     var data: ?*anyopaque = undefined;
     try vk.checkResult(c.vkMapMemory(logicalDevice, uniformBufferMemory, 0, @sizeOf([16]f32), 0, &data));
 
-    const angle = time;
+    const angle = time * 5;
     const cos_a = @cos(angle);
     const sin_a = @sin(angle);
 
     // Create a 2D rotation matrix in mat4 format
     const transform = [16]f32{
         cos_a, -sin_a, 0.0, 0.0,
-        sin_a,  cos_a, 0.0, 0.0,
-        0.0,    0.0,   1.0, 0.0,
-        0.0,    0.0,   0.0, 1.0,
+        sin_a, cos_a,  0.0, 0.0,
+        0.0,   0.0,    1.0, 0.0,
+        0.0,   0.0,    0.0, 1.0,
     };
 
     const dest: [*]f32 = @ptrCast(@alignCast(data));
@@ -266,6 +240,29 @@ fn render(
         0,
         null,
     );
+
+    const viewport = c.VkViewport{
+        .x = 0.0,
+        .y = 0.0,
+        .width = @floatFromInt(width),
+        .height = @floatFromInt(height),
+        .minDepth = 0.0,
+        .maxDepth = 1.0,
+    };
+    c.vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    const scissor = c.VkRect2D{
+        .offset = .{
+            .x = 0,
+            .y = 0,
+        },
+        .extent = .{
+            .width = width,
+            .height = height,
+        },
+    };
+    c.vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
     c.vkCmdDraw(commandBuffer, 3, 1, 0, 0); // 3 vertices, 1 instance
 
     // End render pass and command buffer
@@ -292,7 +289,7 @@ fn render(
     try vk.checkResult(c.vkQueueSubmit(queue, 1, &submitInfo, inFlightFence));
 
     // Wait for queue to finish (debugging)
-    try vk.checkResult(c.vkQueueWaitIdle(queue));
+    //try vk.checkResult(c.vkQueueWaitIdle(queue));
 
     // 5. Present the image
     const swapchains = [_]c.VkSwapchainKHR{swapchain};

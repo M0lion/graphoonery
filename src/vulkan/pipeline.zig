@@ -154,6 +154,19 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         &pipelineLayout,
     ));
 
+    const dynamicStates = [_]c.VkDynamicState{
+        c.VK_DYNAMIC_STATE_VIEWPORT,
+        c.VK_DYNAMIC_STATE_SCISSOR,
+    };
+
+    const dynamicState = c.VkPipelineDynamicStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .dynamicStateCount = dynamicStates.len,
+        .pDynamicStates = &dynamicStates,
+    };
+
     var pipelineInfo = c.VkGraphicsPipelineCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = null,
@@ -167,7 +180,7 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .pMultisampleState = &multisampling,
         .pDepthStencilState = null,
         .pColorBlendState = &colorBlending,
-        .pDynamicState = null,
+        .pDynamicState = &dynamicState,
         .layout = pipelineLayout,
         .renderPass = config.renderPass,
         .subpass = 0,

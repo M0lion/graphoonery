@@ -1,6 +1,7 @@
 #version 450
 
 layout(binding = 0) uniform UniformBufferObject {
+		mat4 view;
     mat4 transform;
 } ubo;
 
