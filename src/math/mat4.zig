@@ -17,8 +17,16 @@ pub const Mat4 = struct {
 
     pub fn createOrtho2D(window_width: f32, window_height: f32, world_units_visible: f32) Mat4 {
         const aspect = window_width / window_height;
-        const half_height = world_units_visible / 2.0;
-        const half_width = half_height * aspect;
+        var half_height: f32 = undefined;
+        var half_width: f32 = undefined;
+
+        if (window_height < window_width) {
+            half_height = world_units_visible / 2.0;
+            half_width = half_height * aspect;
+        } else {
+            half_width = world_units_visible / 2.0;
+            half_height = half_width / aspect;
+        }
 
         const left = -half_width;
         const right = half_width;
