@@ -11,6 +11,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    compileShaders(b, module) catch {
+        @panic("Failed to compile shaders");
+    };
+
     const exe = b.addExecutable(.{
         .name = "macos-window",
         .root_module = module,
@@ -90,4 +94,40 @@ fn generateWaylandProtocol(b: *std.Build, exe: *std.Build.Step.Compile) void {
         .file = code_file,
     });
     exe.addIncludePath(header_file.dirname());
+}
+
+fn compileShaders(b: *std.Build, module: *std.Build.Module) !void {
+    const shaders = [_]struct { path: []const u8, name: []const u8 }{
+        .{ .path = "shaders/vertex.vert", .name = "vertex_vert_spv" },
+        .{ .path = "shaders/fragment.frag", .name = "fragment_frag_spv" },
+    };
+
+    // Create a WriteFiles step to generate our wrapper
+    const wf = b.addWriteFiles();
+
+    var shader_zig_contents = try std.ArrayList(u8).initCapacity(b.allocator, 0);
+    const writer = shader_zig_contents.writer(b.allocator);
+
+    for (shaders) |shader| {
+        const glslc = b.addSystemCommand(&[_][]const u8{"glslc"});
+        glslc.addFileArg(b.path(shader.path));
+        glslc.addArg("-o");
+        const output = glslc.addOutputFileArg(b.fmt("{s}.spv", .{shader.name}));
+
+        // Copy the spv file into our write files directory
+        _ = wf.addCopyFile(output, b.fmt("{s}.spv", .{shader.name}));
+
+        // Generate: pub const vertex_vert_spv = @embedFile("vertex_vert_spv.spv");
+        writer.print("pub const {s} = @embedFile(\"{s}.spv\");\n", .{ shader.name, shader.name }) catch @panic("OOM");
+    }
+
+    // Write the generated Zig file
+    const shaders_zig = wf.add("shaders.zig", shader_zig_contents.items);
+
+    // Add as a module
+    const shaders_module = b.addModule("shaders", .{
+        .root_source_file = shaders_zig,
+    });
+
+    module.addImport("shaders", shaders_module);
 }

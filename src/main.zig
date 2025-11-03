@@ -14,6 +14,9 @@ const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig")
     const c = struct {};
 };
 const math = @import("math/index.zig");
+const shaders = @import("shaders");
+const vertShaderCode = shaders.vertex_vert_spv;
+const fragShaderCode = shaders.fragment_frag_spv;
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -33,8 +36,6 @@ pub fn main() !void {
     const queue = vulkanContext.queue;
     const queueFamily = vulkanContext.queueFamily;
     std.log.debug("Loading shaders", .{});
-    const vertShaderCode = @embedFile("shaders/vert.spv");
-    const fragShaderCode = @embedFile("shaders/frag.spv");
 
     var vertCreateInfo = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
