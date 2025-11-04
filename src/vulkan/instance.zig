@@ -10,15 +10,26 @@ pub const ApplicationInfo = struct {
 
 pub fn createInstance(info: ApplicationInfo) !c.VkInstance {
     // Create Vulkan instance
+    const requestedVersion = vk.API_VERSION_1_0;
     const app_info = c.VkApplicationInfo{
         .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName = info.name,
-        .apiVersion = vk.API_VERSION_1_0,
+        .apiVersion = requestedVersion,
         // .pNext = null,
         // .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
         // .pEngineName = "No Engine",
         // .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
     };
+
+    var version: u32 = undefined;
+    _ = c.vkEnumerateInstanceVersion(&version);
+    std.log.info("Version: {} R: {}, {}.{}.{}", .{
+        version,
+        requestedVersion,
+        c.VK_VERSION_MAJOR(version),
+        c.VK_VERSION_MINOR(version),
+        c.VK_VERSION_PATCH(version),
+    });
 
     // Simpler extension list for older MoltenVK
     const extensions = if (platform == .macos)

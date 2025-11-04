@@ -17,6 +17,7 @@ const math = @import("math/index.zig");
 const shaders = @import("shaders");
 const vertShaderCode = shaders.vertex_vert_spv;
 const fragShaderCode = shaders.fragment_frag_spv;
+const ColoredVertexPipeline = @import("coloredVertexPipeline.zig").ColoredVertexPipeline;
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -37,76 +38,13 @@ pub fn main() !void {
     const queueFamily = vulkanContext.queueFamily;
     std.log.debug("Loading shaders", .{});
 
-    var vertCreateInfo = c.VkShaderModuleCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .codeSize = vertShaderCode.len,
-        .pCode = @ptrCast(@alignCast(vertShaderCode.ptr)),
+    var coloredVertexPipeline = try ColoredVertexPipeline.init(vulkanContext);
+    defer coloredVertexPipeline.deinit();
+
+    var transform = try ColoredVertexPipeline.TransformUBO.init(&coloredVertexPipeline);
+    defer transform.deinit() catch |err| {
+        std.log.err("Failed to free transform: {}", .{err});
     };
-
-    var vertShaderModule: c.VkShaderModule = undefined;
-    try vk.checkResult(c.vkCreateShaderModule(logicalDevice, &vertCreateInfo, null, &vertShaderModule));
-
-    var fragCreateInfo = c.VkShaderModuleCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .codeSize = fragShaderCode.len,
-        .pCode = @ptrCast(@alignCast(fragShaderCode.ptr)),
-    };
-
-    var fragShaderModule: c.VkShaderModule = undefined;
-    try vk.checkResult(c.vkCreateShaderModule(logicalDevice, &fragCreateInfo, null, &fragShaderModule));
-
-    std.log.debug("Creating uniform buffer", .{});
-    const uniformBufferSize = @sizeOf([16]f32) * 2; // mat4
-    const uniformBufferResult = try buffer.createBuffer(
-        vulkanContext.physicalDevice,
-        logicalDevice,
-        uniformBufferSize,
-        c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-    );
-    const uniformBuffer = uniformBufferResult.buffer;
-    const uniformBufferMemory = uniformBufferResult.memory;
-    defer buffer.destroyBuffer(logicalDevice, uniformBuffer);
-    defer buffer.freeMemory(logicalDevice, uniformBufferMemory);
-
-    std.log.debug("Creating descriptor set layout", .{});
-    const descriptorSetLayout = try descriptor.createDescriptorSetLayout(logicalDevice);
-    defer descriptor.destroyDescriptorSetLayout(logicalDevice, descriptorSetLayout);
-
-    std.log.debug("Creating descriptor pool", .{});
-    const descriptorPool = try descriptor.createDescriptorPool(logicalDevice);
-    defer descriptor.destroyDescriptorPool(logicalDevice, descriptorPool);
-
-    std.log.debug("Allocating descriptor set", .{});
-    const descriptorSet = try descriptor.allocateDescriptorSet(
-        logicalDevice,
-        descriptorPool,
-        descriptorSetLayout,
-    );
-
-    descriptor.updateDescriptorSet(logicalDevice, descriptorSet, uniformBuffer, uniformBufferSize);
-
-    std.log.debug("Creating pipeline", .{});
-    const pipelineResult = try pipeline.createGraphicsPipeline(.{
-        .logicalDevice = logicalDevice,
-        .vertShaderModule = vertShaderModule,
-        .fragShaderModule = fragShaderModule,
-        .width = vulkanContext.width,
-        .height = vulkanContext.height,
-        .renderPass = vulkanContext.renderPass,
-        .descriptorSetLayout = descriptorSetLayout,
-    });
-    defer pipeline.destroyPipeline(logicalDevice, pipelineResult.pipeline);
-    defer pipeline.destroyPipelineLayout(logicalDevice, pipelineResult.layout);
-    const graphicsPipeline = pipelineResult.pipeline;
-
-    std.log.debug("Cleaning up shaders", .{});
-    c.vkDestroyShaderModule(logicalDevice, vertShaderModule, null);
-    c.vkDestroyShaderModule(logicalDevice, fragShaderModule, null);
 
     std.log.debug("Creating command pool", .{});
     const commandPool = try command.createCommandPool(logicalDevice, queueFamily);
@@ -132,12 +70,30 @@ pub fn main() !void {
         }
     }
 
+    var width, var height = window.getWindowSize();
+    var aspect =
+        @as(f32, @floatFromInt(width)) /
+        @as(f32, @floatFromInt(height));
+
+    var t = math.Mat4.identity();
+    var p = math.Mat4.createPerspective(90, aspect, 0.01, 10);
+    try transform.update(&t, &p);
+
     // Event loop
     var time: f32 = 0.0;
     while (window.pollEvents()) {
-        const width, const height = window.getWindowSize();
+        width, height = window.getWindowSize();
+        t = math.Mat4.createRotation(time * 10, time * 6, time * 3);
+        t = math.Mat4.createTranslation(0, 0, -5).multiply(&t);
         if (vulkanContext.width != width or vulkanContext.height != height) {
             try vulkanContext.resize();
+            aspect =
+                @as(f32, @floatFromInt(width)) /
+                @as(f32, @floatFromInt(height));
+            p = math.Mat4.createPerspective(90, aspect, 0.01, 10);
+            try transform.update(&t, &p);
+        } else {
+            try transform.update(&t, null);
         }
 
         try render(
@@ -150,13 +106,10 @@ pub fn main() !void {
             vulkanContext.framebuffers,
             width,
             height,
-            graphicsPipeline,
-            pipelineResult.layout,
             renderFinishedSemaphore,
             queue,
-            uniformBufferMemory,
-            descriptorSet,
-            time,
+            &coloredVertexPipeline,
+            &transform,
         );
         time += 0.001;
         std.Thread.sleep(10 * std.time.ns_per_ms); // Sleep 100ms between frames
@@ -174,42 +127,11 @@ fn render(
     swapchainFramebuffers: []c.VkFramebuffer,
     width: u32,
     height: u32,
-    graphicsPipeline: c.VkPipeline,
-    pipelineLayout: c.VkPipelineLayout,
     renderFinishedSemaphore: c.VkSemaphore,
     queue: c.VkQueue,
-    uniformBufferMemory: c.VkDeviceMemory,
-    descriptorSet: c.VkDescriptorSet,
-    time: f32,
+    coloredVertexPipeline: *ColoredVertexPipeline,
+    trans: *ColoredVertexPipeline.TransformUBO,
 ) !void {
-    // 1. Update uniform buffer with rotation
-    var data: ?*anyopaque = undefined;
-    try vk.checkResult(c.vkMapMemory(logicalDevice, uniformBufferMemory, 0, @sizeOf([16]f32) * 2, 0, &data));
-
-    const angle = time * 5;
-    const cos_a = @cos(angle);
-    const sin_a = @sin(angle);
-
-    // Create a 2D rotation matrix in mat4 format
-    const transform = [16]f32{
-        cos_a, -sin_a, 0.0, 0.0,
-        sin_a, cos_a,  0.0, 0.0,
-        0.0,   0.0,    1.0, 0.0,
-        0.0,   0.0,    0.0, 1.0,
-    };
-
-    const dest: [*]f32 = @ptrCast(@alignCast(data));
-    @memcpy(dest[0..16], &transform);
-
-    const projectionMatrix = math.Mat4.createOrtho2D(
-        @as(f32, @floatFromInt(width)),
-        @as(f32, @floatFromInt(height)),
-        4,
-    );
-    @memcpy(dest[16..32], &projectionMatrix.m);
-
-    c.vkUnmapMemory(logicalDevice, uniformBufferMemory);
-
     // 2. Wait for the previous frame to finish
     try vk.checkResult(c.vkWaitForFences(logicalDevice, 1, &inFlightFence, c.VK_TRUE, std.math.maxInt(u64)));
     try vk.checkResult(c.vkResetFences(logicalDevice, 1, &inFlightFence));
@@ -250,19 +172,6 @@ fn render(
 
     c.vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, c.VK_SUBPASS_CONTENTS_INLINE);
 
-    // Bind pipeline, descriptor set, and draw
-    c.vkCmdBindPipeline(commandBuffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-    c.vkCmdBindDescriptorSets(
-        commandBuffer,
-        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipelineLayout,
-        0,
-        1,
-        &descriptorSet,
-        0,
-        null,
-    );
-
     const viewport = c.VkViewport{
         .x = 0.0,
         .y = 0.0,
@@ -285,10 +194,11 @@ fn render(
     };
     c.vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    c.vkCmdDraw(commandBuffer, 6, 1, 0, 0); // 3 vertices, 1 instance
+    try coloredVertexPipeline.draw(commandBuffer, trans);
 
     // End render pass and command buffer
     c.vkCmdEndRenderPass(commandBuffer);
+
     try vk.checkResult(c.vkEndCommandBuffer(commandBuffer));
 
     // 4. Submit command buffer

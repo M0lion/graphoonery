@@ -120,3 +120,7 @@ pub fn updateDescriptorSet(
 
     c.vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, null);
 }
+
+pub fn destroyDescriptorSet(logicalDevice: c.VkDevice, descriptorPool: c.VkDescriptorPool, descriptorSet: *c.VkDescriptorSet) !void {
+    try vk.checkResult(c.vkFreeDescriptorSets(logicalDevice, descriptorPool, 1, descriptorSet));
+}

@@ -92,7 +92,7 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .depthClampEnable = c.VK_FALSE,
         .rasterizerDiscardEnable = c.VK_FALSE,
         .polygonMode = c.VK_POLYGON_MODE_FILL,
-        .cullMode = c.VK_CULL_MODE_BACK_BIT,
+        .cullMode = c.VK_CULL_MODE_NONE,
         .frontFace = c.VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = c.VK_FALSE,
         .depthBiasConstantFactor = 0.0,
