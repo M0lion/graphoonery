@@ -39,6 +39,35 @@ pub fn main() !void {
     var coloredVertexPipeline = try ColoredVertexPipeline.init(vulkanContext);
     defer coloredVertexPipeline.deinit();
 
+    var vertices = [_]ColoredVertexPipeline.Vertex{
+        .{
+            .position = .{ -1, -1, 0 },
+            .color = .{ 1, 0, 0, 1 },
+        },
+        .{
+            .position = .{ 1, -1, 0 },
+            .color = .{ 0, 1, 0, 1 },
+        },
+        .{
+            .position = .{ 1, 1, 0 },
+            .color = .{ 0, 0, 1, 1 },
+        },
+        .{
+            .position = .{ -1, -1, 0 },
+            .color = .{ 1, 0, 0, 1 },
+        },
+        .{
+            .position = .{ 1, 1, 0 },
+            .color = .{ 0, 0, 1, 1 },
+        },
+        .{
+            .position = .{ -1, 1, 0 },
+            .color = .{ 0, 1, 0, 1 },
+        },
+    };
+    const mesh = try ColoredVertexPipeline.Mesh.init(&coloredVertexPipeline, &vertices);
+    defer mesh.deinit();
+
     var transform = try ColoredVertexPipeline.TransformUBO.init(&coloredVertexPipeline);
     defer transform.deinit() catch |err| {
         std.log.err("Failed to free transform: {}", .{err});
@@ -64,7 +93,7 @@ pub fn main() !void {
     var time: f32 = 0.0;
     while (window.pollEvents()) {
         width, height = window.getWindowSize();
-        t = math.Mat4.createRotation(time * 10, time * 6, time * 3);
+        t = math.Mat4.createRotation(time * 10, time * 6, time * 30);
         t = math.Mat4.createTranslation(0, 0, -5).multiply(&t);
         if (vulkanContext.width != width or vulkanContext.height != height) {
             try vulkanContext.resize();
@@ -77,27 +106,16 @@ pub fn main() !void {
             try transform.update(&t, null);
         }
 
-        try render(
-            &vulkanContext,
-            &coloredVertexPipeline,
-            &transform,
-        );
+        {
+            const commandBuffer = try vulkanContext.beginDraw();
+            defer vulkanContext.endDraw() catch {
+                @panic("Failed to end draw");
+            };
+            try coloredVertexPipeline.draw(commandBuffer, &transform, &mesh);
+        }
+
         time += 0.001;
         std.Thread.sleep(10 * std.time.ns_per_ms); // Sleep 100ms between frames
     }
     try vk.checkResult(c.vkDeviceWaitIdle(logicalDevice));
-}
-
-fn render(
-    context: *VulkanContext,
-    coloredVertexPipeline: *ColoredVertexPipeline,
-    trans: *ColoredVertexPipeline.TransformUBO,
-) !void {
-    {
-        const commandBuffer = try context.beginDraw();
-        defer context.endDraw() catch {
-            @panic("Failed to end draw");
-        };
-        try coloredVertexPipeline.draw(commandBuffer, trans);
-    }
 }

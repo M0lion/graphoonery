@@ -10,6 +10,8 @@ pub const PipelineConfig = struct {
     height: u32,
     renderPass: c.VkRenderPass,
     descriptorSetLayout: c.VkDescriptorSetLayout,
+    vertexBindingDescriptions: []c.VkVertexInputBindingDescription,
+    vertexAttributeDescriptions: []c.VkVertexInputAttributeDescription,
 };
 
 pub const PipelineResult = struct {
@@ -44,10 +46,10 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .vertexBindingDescriptionCount = 0,
-        .pVertexBindingDescriptions = null,
-        .vertexAttributeDescriptionCount = 0,
-        .pVertexAttributeDescriptions = null,
+        .vertexBindingDescriptionCount = @intCast(config.vertexBindingDescriptions.len),
+        .pVertexBindingDescriptions = config.vertexBindingDescriptions.ptr,
+        .vertexAttributeDescriptionCount = @intCast(config.vertexAttributeDescriptions.len),
+        .pVertexAttributeDescriptions = config.vertexAttributeDescriptions.ptr,
     };
 
     var inputAssembly = c.VkPipelineInputAssemblyStateCreateInfo{

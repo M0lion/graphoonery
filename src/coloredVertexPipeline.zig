@@ -48,6 +48,29 @@ pub const ColoredVertexPipeline = struct {
         var fragShaderModule: c.VkShaderModule = undefined;
         try vk.checkResult(c.vkCreateShaderModule(logicalDevice, &fragCreateInfo, null, &fragShaderModule));
 
+        var bindingDescriptions = [_]c.VkVertexInputBindingDescription{
+            .{
+                .binding = 0,
+                .stride = @sizeOf(Vertex),
+                .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
+            },
+        };
+
+        var attributeDescriptions = [_]c.VkVertexInputAttributeDescription{
+            .{ // Position
+                .binding = 0,
+                .location = 0,
+                .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = @offsetOf(Vertex, "position"),
+            },
+            .{ // Color
+                .binding = 0,
+                .location = 1,
+                .format = c.VK_FORMAT_R32G32B32A32_SFLOAT,
+                .offset = @offsetOf(Vertex, "color"),
+            },
+        };
+
         const pipelineResult = try pipe.createGraphicsPipeline(.{
             .logicalDevice = logicalDevice,
             .vertShaderModule = vertShaderModule,
@@ -56,6 +79,8 @@ pub const ColoredVertexPipeline = struct {
             .height = vulkanContext.height,
             .renderPass = vulkanContext.renderPass,
             .descriptorSetLayout = descriptorSetLayout,
+            .vertexBindingDescriptions = &bindingDescriptions,
+            .vertexAttributeDescriptions = &attributeDescriptions,
         });
 
         return ColoredVertexPipeline{
@@ -76,7 +101,12 @@ pub const ColoredVertexPipeline = struct {
         descriptor.destroyDescriptorSetLayout(logicalDevice, self.descriptorSetLayout);
     }
 
-    pub fn draw(self: *ColoredVertexPipeline, commandBuffer: c.VkCommandBuffer, transform: *TransformUBO) !void {
+    pub fn draw(
+        self: *ColoredVertexPipeline,
+        commandBuffer: c.VkCommandBuffer,
+        transform: *const TransformUBO,
+        mesh: *const Mesh,
+    ) !void {
         c.vkCmdBindPipeline(commandBuffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline);
         c.vkCmdBindDescriptorSets(
             commandBuffer,
@@ -88,9 +118,58 @@ pub const ColoredVertexPipeline = struct {
             0,
             null,
         );
+        const offset: u64 = 0;
+        c.vkCmdBindVertexBuffers(commandBuffer, 0, 1, &mesh.buffer, &offset);
 
         c.vkCmdDraw(commandBuffer, 6, 1, 0, 0); // 3 vertices, 1 instance
     }
+
+    pub const Mesh = struct {
+        pipeline: *ColoredVertexPipeline,
+        buffer: c.VkBuffer,
+        memory: c.VkDeviceMemory,
+
+        pub fn init(pipeline: *ColoredVertexPipeline, vertices: []Vertex) !Mesh {
+            const vertexBufferResult = try buffer.createBuffer(
+                pipeline.context.physicalDevice,
+                pipeline.context.logicalDevice,
+                @sizeOf(Vertex) * vertices.len,
+                c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            );
+            const vertexBuffer = vertexBufferResult.buffer;
+            const vertexBufferMemory = vertexBufferResult.memory;
+
+            var data: ?*anyopaque = undefined;
+            try vk.checkResult(c.vkMapMemory(
+                pipeline.context.logicalDevice,
+                vertexBufferMemory,
+                0,
+                @sizeOf(Vertex) * vertices.len,
+                0,
+                &data,
+            ));
+
+            // Copy vertex data
+            const mapped = @as([*]Vertex, @ptrCast(@alignCast(data)));
+            @memcpy(mapped[0..vertices.len], vertices.ptr);
+
+            // Unmap
+            c.vkUnmapMemory(pipeline.context.logicalDevice, vertexBufferMemory);
+
+            return Mesh{
+                .pipeline = pipeline,
+                .buffer = vertexBuffer,
+                .memory = vertexBufferMemory,
+            };
+        }
+
+        pub fn deinit(self: *const Mesh) void {
+            const logicalDevice = self.pipeline.context.logicalDevice;
+            buffer.freeMemory(logicalDevice, self.memory);
+            buffer.destroyBuffer(logicalDevice, self.buffer);
+        }
+    };
 
     pub const TransformUBO = struct {
         descriptorSet: c.VkDescriptorSet,
