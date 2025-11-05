@@ -34,8 +34,6 @@ pub fn main() !void {
     defer vulkanContext.deinit();
 
     const logicalDevice = vulkanContext.logicalDevice;
-    const queue = vulkanContext.queue;
-    const queueFamily = vulkanContext.queueFamily;
     std.log.debug("Loading shaders", .{});
 
     var coloredVertexPipeline = try ColoredVertexPipeline.init(vulkanContext);
@@ -45,23 +43,6 @@ pub fn main() !void {
     defer transform.deinit() catch |err| {
         std.log.err("Failed to free transform: {}", .{err});
     };
-
-    std.log.debug("Creating command pool", .{});
-    const commandPool = try command.createCommandPool(logicalDevice, queueFamily);
-    defer command.destroyCommandPool(logicalDevice, commandPool);
-
-    std.log.debug("Allocating command buffers", .{});
-    const commandBuffer = try command.allocateCommandBuffer(logicalDevice, commandPool);
-    defer command.freeCommandBuffer(logicalDevice, commandPool, commandBuffer);
-
-    std.log.debug("Creating sync objects", .{});
-    const syncObjects = try sync.createSyncObjects(logicalDevice);
-    const imageAvailableSemaphore = syncObjects.imageAvailableSemaphore;
-    const renderFinishedSemaphore = syncObjects.renderFinishedSemaphore;
-    const inFlightFence = syncObjects.inFlightFence;
-    defer sync.destroySemaphore(logicalDevice, imageAvailableSemaphore);
-    defer sync.destroySemaphore(logicalDevice, renderFinishedSemaphore);
-    defer sync.destroyFence(logicalDevice, inFlightFence);
 
     // Flush all Wayland requests before rendering
     if (builtin.os.tag != .macos) {
@@ -97,17 +78,7 @@ pub fn main() !void {
         }
 
         try render(
-            logicalDevice,
-            inFlightFence,
-            vulkanContext.swapchain,
-            imageAvailableSemaphore,
-            commandBuffer,
-            vulkanContext.renderPass,
-            vulkanContext.framebuffers,
-            width,
-            height,
-            renderFinishedSemaphore,
-            queue,
+            &vulkanContext,
             &coloredVertexPipeline,
             &transform,
         );
@@ -118,124 +89,15 @@ pub fn main() !void {
 }
 
 fn render(
-    logicalDevice: c.VkDevice,
-    inFlightFence: c.VkFence,
-    swapchain: c.VkSwapchainKHR,
-    imageAvailableSemaphore: c.VkSemaphore,
-    commandBuffer: c.VkCommandBuffer,
-    renderPass: c.VkRenderPass,
-    swapchainFramebuffers: []c.VkFramebuffer,
-    width: u32,
-    height: u32,
-    renderFinishedSemaphore: c.VkSemaphore,
-    queue: c.VkQueue,
+    context: *VulkanContext,
     coloredVertexPipeline: *ColoredVertexPipeline,
     trans: *ColoredVertexPipeline.TransformUBO,
 ) !void {
-    // 2. Wait for the previous frame to finish
-    try vk.checkResult(c.vkWaitForFences(logicalDevice, 1, &inFlightFence, c.VK_TRUE, std.math.maxInt(u64)));
-    try vk.checkResult(c.vkResetFences(logicalDevice, 1, &inFlightFence));
-
-    // 3. Acquire an image from the swapchain
-    var imageIndex: u32 = undefined;
-    try vk.checkResult(c.vkAcquireNextImageKHR(logicalDevice, swapchain, std.math.maxInt(u64), imageAvailableSemaphore, null, &imageIndex));
-
-    // 3. Reset and record command buffer
-    try vk.checkResult(c.vkResetCommandBuffer(commandBuffer, 0));
-
-    var beginInfo = c.VkCommandBufferBeginInfo{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = null,
-        .flags = 0,
-        .pInheritanceInfo = null,
-    };
-    try vk.checkResult(c.vkBeginCommandBuffer(commandBuffer, &beginInfo));
-
-    // Begin render pass
-    const clearColor = c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } };
-
-    var renderPassInfo = c.VkRenderPassBeginInfo{
-        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .pNext = null,
-        .renderPass = renderPass,
-        .framebuffer = swapchainFramebuffers[imageIndex],
-        .renderArea = .{
-            .offset = .{ .x = 0, .y = 0 },
-            .extent = c.VkExtent2D{
-                .width = width,
-                .height = height,
-            },
-        },
-        .clearValueCount = 1,
-        .pClearValues = &clearColor,
-    };
-
-    c.vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, c.VK_SUBPASS_CONTENTS_INLINE);
-
-    const viewport = c.VkViewport{
-        .x = 0.0,
-        .y = 0.0,
-        .width = @floatFromInt(width),
-        .height = @floatFromInt(height),
-        .minDepth = 0.0,
-        .maxDepth = 1.0,
-    };
-    c.vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-    const scissor = c.VkRect2D{
-        .offset = .{
-            .x = 0,
-            .y = 0,
-        },
-        .extent = .{
-            .width = width,
-            .height = height,
-        },
-    };
-    c.vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-    try coloredVertexPipeline.draw(commandBuffer, trans);
-
-    // End render pass and command buffer
-    c.vkCmdEndRenderPass(commandBuffer);
-
-    try vk.checkResult(c.vkEndCommandBuffer(commandBuffer));
-
-    // 4. Submit command buffer
-    const waitSemaphores = [_]c.VkSemaphore{imageAvailableSemaphore};
-    const waitStages = [_]c.VkPipelineStageFlags{c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    const signalSemaphores = [_]c.VkSemaphore{renderFinishedSemaphore};
-
-    var submitInfo = c.VkSubmitInfo{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = null,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &waitSemaphores,
-        .pWaitDstStageMask = &waitStages,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &commandBuffer,
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &signalSemaphores,
-    };
-
-    try vk.checkResult(c.vkQueueSubmit(queue, 1, &submitInfo, inFlightFence));
-
-    // Wait for queue to finish (debugging)
-    //try vk.checkResult(c.vkQueueWaitIdle(queue));
-
-    // 5. Present the image
-    const swapchains = [_]c.VkSwapchainKHR{swapchain};
-
-    var presentInfo = c.VkPresentInfoKHR{
-        .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .pNext = null,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &signalSemaphores,
-        .swapchainCount = 1,
-        .pSwapchains = &swapchains,
-        .pImageIndices = &imageIndex,
-        .pResults = null,
-    };
-
-    try vk.checkResult(c.vkQueuePresentKHR(queue, &presentInfo));
+    {
+        const commandBuffer = try context.beginDraw();
+        defer context.endDraw() catch {
+            @panic("Failed to end draw");
+        };
+        try coloredVertexPipeline.draw(commandBuffer, trans);
+    }
 }

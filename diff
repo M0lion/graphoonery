@@ -1,0 +1,404 @@
+Added regular file diff:
+    (empty)
+Modified regular file src/main.zig:
+    ...
+  34   34:     defer vulkanContext.deinit();
+  35   35: 
+  36   36:     const logicalDevice = vulkanContext.logicalDevice;
+  37     :     const queue = vulkanContext.queue;
+  38     :     const queueFamily = vulkanContext.queueFamily;
+  39   37:     std.log.debug("Loading shaders", .{});
+  40   38: 
+  41   39:     var coloredVertexPipeline = try ColoredVertexPipeline.init(vulkanContext);
+    ...
+  46   44:         std.log.err("Failed to free transform: {}", .{err});
+  47   45:     };
+  48   46: 
+  49     :     std.log.debug("Creating command pool", .{});
+  50     :     const commandPool = try command.createCommandPool(logicalDevice, queueFamily);
+  51     :     defer command.destroyCommandPool(logicalDevice, commandPool);
+  52     : 
+  53     :     std.log.debug("Allocating command buffers", .{});
+  54     :     const commandBuffer = try command.allocateCommandBuffer(logicalDevice, commandPool);
+  55     :     defer command.freeCommandBuffer(logicalDevice, commandPool, commandBuffer);
+  56     : 
+  57     :     std.log.debug("Creating sync objects", .{});
+  58     :     const syncObjects = try sync.createSyncObjects(logicalDevice);
+  59     :     const imageAvailableSemaphore = syncObjects.imageAvailableSemaphore;
+  60     :     const renderFinishedSemaphore = syncObjects.renderFinishedSemaphore;
+  61     :     const inFlightFence = syncObjects.inFlightFence;
+  62     :     defer sync.destroySemaphore(logicalDevice, imageAvailableSemaphore);
+  63     :     defer sync.destroySemaphore(logicalDevice, renderFinishedSemaphore);
+  64     :     defer sync.destroyFence(logicalDevice, inFlightFence);
+  65     : 
+  66   47:     // Flush all Wayland requests before rendering
+  67   48:     if (builtin.os.tag != .macos) {
+  68   49:         if (window.windowHandle.display) |display| {
+    ...
+  97   78:         }
+  98   79: 
+  99   80:         try render(
+ 100   81:             logicalDevice,
+ 101     :             inFlightFence,
+ 102     :             vulkanContext.swapchain,
+ 103     :             imageAvailableSemaphore,
+ 104     :             commandBuffer,
+ 105     :             vulkanContext.renderPass,
+ 106     :             vulkanContext.framebuffers,
+ 107     :             width,
+ 108     :             height,
+ 109     :             renderFinishedSemaphore,
+ 110   81:             queue&vulkanContext,
+ 111   82:             &coloredVertexPipeline,
+ 112   83:             &transform,
+ 113   84:         );
+    ...
+ 118   89: }
+ 119   90: 
+ 120   91: fn render(
+ 121     :     logicalDevice: c.VkDevice,
+ 122     :     inFlightFence: c.VkFence,
+ 123     :     swapchain: c.VkSwapchainKHR,
+ 124     :     imageAvailableSemaphore: c.VkSemaphore,
+ 125     :     commandBuffer: c.VkCommandBuffer,
+ 126     :     renderPass: c.VkRenderPass,
+ 127     :     swapchainFramebuffers: []c.VkFramebuffer,
+ 128     :     width: u32,
+ 129     :     height: u32,
+ 130     :     renderFinishedSemaphore: c.VkSemaphore,
+ 131     :     queue: c.VkQueue,
+       92:     context: *VulkanContext,
+ 132   93:     coloredVertexPipeline: *ColoredVertexPipeline,
+ 133   94:     trans: *ColoredVertexPipeline.TransformUBO,
+ 134   95: ) !void {
+ 135     :     // 2. Wait for the previous frame to finish
+ 136     :     try vk.checkResult(c.vkWaitForFences(logicalDevice, 1, &inFlightFence, c.VK_TRUE, std.math.maxInt(u64)));
+ 137     :     try vk.checkResult(c.vkResetFences(logicalDevice, 1, &inFlightFence));
+ 138     : 
+ 139     :     // 3. Acquire an image from the swapchain
+ 140     :     var imageIndex: u32 = undefined;
+ 141     :     try vk.checkResult(c.vkAcquireNextImageKHR(logicalDevice, swapchain, std.math.maxInt(u64), imageAvailableSemaphore, null, &imageIndex));
+ 142     : 
+ 143     :     // 3. Reset and record command buffer
+ 144     :     try vk.checkResult(c.vkResetCommandBuffer(commandBuffer, 0));
+ 145     : 
+ 146     :     var beginInfo = c.VkCommandBufferBeginInfo{
+ 147     :         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+ 148     :         .pNext = null,
+ 149     :         .flags = 0,
+ 150     :         .pInheritanceInfo = null,
+ 151     :     };
+ 152     :     try vk.checkResult(c.vkBeginCommandBuffer(commandBuffer, &beginInfo));
+ 153     : 
+ 154     :     // Begin render pass
+ 155     :     const clearColor = c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } };
+ 156     : 
+ 157     :     var renderPassInfo = c.VkRenderPassBeginInfo{
+ 158     :         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+ 159     :         .pNext = null,
+ 160     :         .renderPass = renderPass,
+ 161     :         .framebuffer = swapchainFramebuffers[imageIndex],
+ 162     :         .renderArea = .{
+ 163     :             .offset = .{ .x = 0, .y = 0 },
+ 164     :             .extent = c.VkExtent2D{
+ 165     :                 .width = width,
+ 166     :                 .height = height,
+ 167     :             },
+ 168     :         },
+ 169     :         .clearValueCount = 1,
+ 170     :         .pClearValues = &clearColor,
+ 171     :     };
+ 172     : 
+ 173     :     c.vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, c.VK_SUBPASS_CONTENTS_INLINE);
+ 174     : 
+ 175     :     const viewport = c.VkViewport{
+ 176     :         .x = 0.0,
+ 177     :         .y = 0.0,
+ 178     :         .width = @floatFromInt(width),
+ 179     :         .height = @floatFromInt(height),
+ 180     :         .minDepth = 0.0,
+ 181     :         .maxDepth = 1.0,
+ 182     :     };
+ 183     :     c.vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+ 184     : 
+ 185     :     const scissor = c.VkRect2D{
+ 186     :         .offset = .{
+ 187     :             .x = 0,
+ 188     :             .y = 0,
+ 189     :         },
+ 190     :         .extent = .{
+ 191     :             .width = width,
+ 192     :             .height = height,
+ 193     :         },
+ 194     :     };
+ 195     :     c.vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+ 196     : 
+ 197     :     try coloredVertexPipeline.draw(commandBuffer, trans);
+ 198     : 
+ 199     :     // End render pass and command buffer
+ 200     :     c.vkCmdEndRenderPass(commandBuffer);
+ 201     : 
+ 202     :     try vk.checkResult(c.vkEndCommandBuffer(commandBuffer));
+ 203     : 
+ 204     :     // 4. Submit command buffer
+ 205     :     const waitSemaphores = [_]c.VkSemaphore{imageAvailableSemaphore};
+ 206     :     const waitStages = [_]c.VkPipelineStageFlags{c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+ 207     :     const signalSemaphores = [_]c.VkSemaphore{renderFinishedSemaphore};
+ 208     : 
+ 209     :     var submitInfo = c.VkSubmitInfo{
+ 210     :         .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+ 211     :         .pNext = null,
+ 212     :         .waitSemaphoreCount = 1,
+ 213     :         .pWaitSemaphores = &waitSemaphores,
+ 214     :         .pWaitDstStageMask = &waitStages,
+ 215     :         .commandBufferCount = 1,
+ 216     :         .pCommandBuffers = &commandBuffer,
+ 217     :         .signalSemaphoreCount = 1,
+ 218     :         .pSignalSemaphores = &signalSemaphores,
+ 219     :     };
+ 220     : 
+ 221     :     try vk.checkResult(c.vkQueueSubmit(queue, 1, &submitInfo, inFlightFence));
+ 222     : 
+ 223     :     // Wait for queue to finish (debugging)
+ 224     :     //try vk.checkResult(c.vkQueueWaitIdle(queue));
+ 225     : 
+ 226     :     // 5. Present the image
+ 227     :     const swapchains = [_]c.VkSwapchainKHR{swapchain};
+ 228     : 
+ 229     :     var presentInfo = c.VkPresentInfoKHR{
+ 230     :         .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+ 231     :         .pNext = null,
+ 232     :         .waitSemaphoreCount = 1,
+ 233     :         .pWaitSemaphores = &signalSemaphores,
+ 234     :         .swapchainCount = 1,
+ 235     :         .pSwapchains = &swapchains,
+ 236     :         .pImageIndices = &imageIndex,
+ 237     :         .pResults = null,
+ 238     :     };
+ 239     : 
+ 240     :     try vk.checkResult(c.vkQueuePresentKHR(queue, &presentInfo));
+       96:     {
+       97:         const commandBuffer = try context.beginDraw();
+       98:         defer context.endDraw() catch {
+       99:             @panic("Failed to end draw");
+      100:         };
+      101:         try coloredVertexPipeline.draw(commandBuffer, trans);
+      102:     }
+ 241  103: }
+Modified regular file src/vulkan/vulkanContext.zig:
+    ...
+  14   14: const fb = @import("framebuffer.zig");
+  15   15: const iv = @import("imageView.zig");
+  16   16: const rp = @import("renderPass.zig");
+       17: const sync = @import("sync.zig");
+       18: const command = @import("command.zig");
+  17   19: 
+  18   20: pub const VulkanContextError = error{
+  19   21:     CouldNotFindPDevice,
+    ...
+  36   38:     renderPass: c.VkRenderPass,
+  37   39:     swapchainImageViews: []c.VkImageView,
+  38   40:     framebuffers: []c.VkFramebuffer,
+       41:     syncObjects: sync.SyncObjects,
+       42:     commandPool: c.VkCommandPool,
+       43:     commandBuffer: c.VkCommandBuffer,
+       44:     imageIndex: ?u32 = null,
+  39   45: 
+  40   46:     pub fn init(window: *Window, allocator: std.mem.Allocator) !VulkanContext {
+  41   47:         const instance = try createInstance(.{
+    ...
+ 123  129:         std.log.debug("Commiting surface", .{});
+ 124  130:         window.commit();
+ 125  131: 
+      132:         const commandPool = try command.createCommandPool(
+      133:             logicalDevice,
+      134:             queueFamily,
+      135:         );
+      136: 
+      137:         const commandBuffer = try command.allocateCommandBuffer(
+      138:             logicalDevice,
+      139:             commandPool,
+      140:         );
+      141: 
+      142:         const syncObjects = try sync.createSyncObjects(logicalDevice);
+      143: 
+ 126  144:         return VulkanContext{
+ 127  145:             .window = window,
+ 128  146:             .allocator = allocator,
+    ...
+ 140  158:             .renderPass = renderPass,
+ 141  159:             .swapchainImageViews = swapchainImageViews,
+ 142  160:             .framebuffers = framebuffers,
+ 143  161:         }    .syncObjects = syncObjects,
+      162:             .commandPool = commandPool,
+      163:             .commandBuffer = commandBuffer,
+      164:         };
+      165:     }
+      166: 
+      167:     pub fn beginDraw(self: *VulkanContext) !c.VkCommandBuffer {
+      168:         const logicalDevice = self.logicalDevice;
+      169:         const inFlightFence = self.syncObjects.inFlightFence;
+      170:         const imageAvailableSemaphore = self.syncObjects.imageAvailableSemaphore;
+      171: 
+      172:         // 2. Wait for the previous frame to finish
+      173:         try vk.checkResult(c.vkWaitForFences(logicalDevice, 1, &inFlightFence, c.VK_TRUE, std.math.maxInt(u64)));
+      174:         try vk.checkResult(c.vkResetFences(logicalDevice, 1, &inFlightFence));
+      175: 
+      176:         // 3. Acquire an image from the swapchain
+      177:         var imageIndex: u32 = undefined;
+      178:         try vk.checkResult(c.vkAcquireNextImageKHR(
+      179:             logicalDevice,
+      180:             self.swapchain,
+      181:             std.math.maxInt(u64),
+      182:             imageAvailableSemaphore,
+      183:             null,
+      184:             &imageIndex,
+      185:         ));
+      186:         self.imageIndex = imageIndex;
+      187:         std.log.debug("image index: {}", .{imageIndex});
+      188: 
+      189:         // 3. Reset and record command buffer
+      190:         try vk.checkResult(c.vkResetCommandBuffer(self.commandBuffer, 0));
+      191: 
+      192:         var beginInfo = c.VkCommandBufferBeginInfo{
+      193:             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      194:             .pNext = null,
+      195:             .flags = 0,
+      196:             .pInheritanceInfo = null,
+      197:         };
+      198:         try vk.checkResult(c.vkBeginCommandBuffer(self.commandBuffer, &beginInfo));
+      199: 
+      200:         // Begin render pass
+      201:         const clearColor = c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } };
+      202: 
+      203:         var renderPassInfo = c.VkRenderPassBeginInfo{
+      204:             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+      205:             .pNext = null,
+      206:             .renderPass = self.renderPass,
+      207:             .framebuffer = self.framebuffers[imageIndex],
+      208:             .renderArea = .{
+      209:                 .offset = .{ .x = 0, .y = 0 },
+      210:                 .extent = c.VkExtent2D{
+      211:                     .width = self.width,
+      212:                     .height = self.height,
+      213:                 },
+      214:             },
+      215:             .clearValueCount = 1,
+      216:             .pClearValues = &clearColor,
+      217:         };
+      218: 
+      219:         c.vkCmdBeginRenderPass(
+      220:             self.commandBuffer,
+      221:             &renderPassInfo,
+      222:             c.VK_SUBPASS_CONTENTS_INLINE,
+      223:         );
+      224: 
+      225:         const viewport = c.VkViewport{
+      226:             .x = 0.0,
+      227:             .y = 0.0,
+      228:             .width = @floatFromInt(self.width),
+      229:             .height = @floatFromInt(self.height),
+      230:             .minDepth = 0.0,
+      231:             .maxDepth = 1.0,
+      232:         };
+      233:         c.vkCmdSetViewport(self.commandBuffer, 0, 1, &viewport);
+      234: 
+      235:         const scissor = c.VkRect2D{
+      236:             .offset = .{
+      237:                 .x = 0,
+      238:                 .y = 0,
+      239:             },
+      240:             .extent = .{
+      241:                 .width = self.width,
+      242:                 .height = self.height,
+      243:             },
+      244:         };
+      245:         c.vkCmdSetScissor(self.commandBuffer, 0, 1, &scissor);
+      246:         return self.commandBuffer;
+      247:     }
+      248: 
+      249:     pub fn endDraw(self: *VulkanContext) !void {
+      250:         c.vkCmdEndRenderPass(self.commandBuffer);
+      251: 
+      252:         try vk.checkResult(c.vkEndCommandBuffer(self.commandBuffer));
+      253: 
+      254:         const waitSemaphores = [_]c.VkSemaphore{
+      255:             self.syncObjects.imageAvailableSemaphore,
+      256:         };
+      257:         const waitStages = [_]c.VkPipelineStageFlags{
+      258:             c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      259:         };
+      260:         const signalSemaphores = [_]c.VkSemaphore{
+      261:             self.syncObjects.renderFinishedSemaphore,
+      262:         };
+      263: 
+      264:         var submitInfo = c.VkSubmitInfo{
+      265:             .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      266:             .pNext = null,
+      267:             .waitSemaphoreCount = 1,
+      268:             .pWaitSemaphores = &waitSemaphores,
+      269:             .pWaitDstStageMask = &waitStages,
+      270:             .commandBufferCount = 1,
+      271:             .pCommandBuffers = &self.commandBuffer,
+      272:             .signalSemaphoreCount = 1,
+      273:             .pSignalSemaphores = &signalSemaphores,
+      274:         };
+      275: 
+      276:         try vk.checkResult(c.vkQueueSubmit(
+      277:             self.queue,
+      278:             1,
+      279:             &submitInfo,
+      280:             self.syncObjects.inFlightFence,
+      281:         ));
+      282: 
+      283:         // Wait for queue to finish (debugging)
+      284:         //try vk.checkResult(c.vkQueueWaitIdle(queue));
+      285: 
+      286:         // 5. Present the image
+      287:         const swapchains = [_]c.VkSwapchainKHR{self.swapchain};
+      288: 
+      289:         var presentInfo = c.VkPresentInfoKHR{
+      290:             .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      291:             .pNext = null,
+      292:             .waitSemaphoreCount = 1,
+      293:             .pWaitSemaphores = &signalSemaphores,
+      294:             .swapchainCount = 1,
+      295:             .pSwapchains = &swapchains,
+      296:             .pImageIndices = &self.imageIndex.?,
+      297:             .pResults = null,
+      298:         };
+      299:         self.imageIndex = null;
+      300: 
+ 143  301:         try vk.checkResult(c.vkQueuePresentKHR(self.queue, &presentInfo));
+ 144  302:     }
+ 145  303: 
+ 146  304:     pub fn resize(self: *VulkanContext) !void {
+    ...
+ 196  354:     }
+ 197  355: 
+ 198  356:     pub fn deinit(self: *VulkanContext) void {
+      357:         sync.destroySemaphore(
+      358:             self.logicalDevice,
+      359:             self.syncObjects.imageAvailableSemaphore,
+      360:         );
+      361:         sync.destroySemaphore(
+      362:             self.logicalDevice,
+      363:             self.syncObjects.renderFinishedSemaphore,
+      364:         );
+      365:         sync.destroyFence(
+      366:             self.logicalDevice,
+      367:             self.syncObjects.inFlightFence,
+      368:         );
+      369:         command.freeCommandBuffer(
+      370:             self.logicalDevice,
+      371:             self.commandPool,
+      372:             self.commandBuffer,
+      373:         );
+      374:         command.destroyCommandPool(
+      375:             self.logicalDevice,
+      376:             self.commandPool,
+      377:         );
+ 199  378:         self.cleanupSwapchain();
+ 200  379:         rp.destroyRenderPass(self.logicalDevice, self.renderPass);
+ 201  380:         c.vkDestroyDevice(self.logicalDevice, null);
+    ...
