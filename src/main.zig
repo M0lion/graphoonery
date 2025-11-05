@@ -40,30 +40,53 @@ pub fn main() !void {
     defer coloredVertexPipeline.deinit();
 
     var vertices = [_]ColoredVertexPipeline.Vertex{
-        .{
-            .position = .{ -1, -1, 0 },
-            .color = .{ 1, 0, 0, 1 },
-        },
-        .{
-            .position = .{ 1, -1, 0 },
-            .color = .{ 0, 1, 0, 1 },
-        },
-        .{
-            .position = .{ 1, 1, 0 },
-            .color = .{ 0, 0, 1, 1 },
-        },
-        .{
-            .position = .{ -1, -1, 0 },
-            .color = .{ 1, 0, 0, 1 },
-        },
-        .{
-            .position = .{ 1, 1, 0 },
-            .color = .{ 0, 0, 1, 1 },
-        },
-        .{
-            .position = .{ -1, 1, 0 },
-            .color = .{ 0, 1, 0, 1 },
-        },
+        // Front face (z = 1) - Red
+        .{ .position = .{ -1, -1, 1 }, .color = .{ 1, 0, 0, 1 } },
+        .{ .position = .{ 1, -1, 1 }, .color = .{ 1, 0, 0, 1 } },
+        .{ .position = .{ 1, 1, 1 }, .color = .{ 1, 0, 0, 1 } },
+        .{ .position = .{ -1, -1, 1 }, .color = .{ 1, 0, 0, 1 } },
+        .{ .position = .{ 1, 1, 1 }, .color = .{ 1, 0, 0, 1 } },
+        .{ .position = .{ -1, 1, 1 }, .color = .{ 1, 0, 0, 1 } },
+
+        // Back face (z = -1) - Green
+        .{ .position = .{ 1, -1, -1 }, .color = .{ 0, 1, 0, 1 } },
+        .{ .position = .{ -1, -1, -1 }, .color = .{ 0, 1, 0, 1 } },
+        .{ .position = .{ -1, 1, -1 }, .color = .{ 0, 1, 0, 1 } },
+        .{ .position = .{ 1, -1, -1 }, .color = .{ 0, 1, 0, 1 } },
+        .{ .position = .{ -1, 1, -1 }, .color = .{ 0, 1, 0, 1 } },
+        .{ .position = .{ 1, 1, -1 }, .color = .{ 0, 1, 0, 1 } },
+
+        // Right face (x = 1) - Blue
+        .{ .position = .{ 1, -1, 1 }, .color = .{ 0, 0, 1, 1 } },
+        .{ .position = .{ 1, -1, -1 }, .color = .{ 0, 0, 1, 1 } },
+        .{ .position = .{ 1, 1, -1 }, .color = .{ 0, 0, 1, 1 } },
+        .{ .position = .{ 1, -1, 1 }, .color = .{ 0, 0, 1, 1 } },
+        .{ .position = .{ 1, 1, -1 }, .color = .{ 0, 0, 1, 1 } },
+        .{ .position = .{ 1, 1, 1 }, .color = .{ 0, 0, 1, 1 } },
+
+        // Left face (x = -1) - Yellow
+        .{ .position = .{ -1, -1, -1 }, .color = .{ 1, 1, 0, 1 } },
+        .{ .position = .{ -1, -1, 1 }, .color = .{ 1, 1, 0, 1 } },
+        .{ .position = .{ -1, 1, 1 }, .color = .{ 1, 1, 0, 1 } },
+        .{ .position = .{ -1, -1, -1 }, .color = .{ 1, 1, 0, 1 } },
+        .{ .position = .{ -1, 1, 1 }, .color = .{ 1, 1, 0, 1 } },
+        .{ .position = .{ -1, 1, -1 }, .color = .{ 1, 1, 0, 1 } },
+
+        // Top face (y = 1) - Cyan
+        .{ .position = .{ -1, 1, 1 }, .color = .{ 0, 1, 1, 1 } },
+        .{ .position = .{ 1, 1, 1 }, .color = .{ 0, 1, 1, 1 } },
+        .{ .position = .{ 1, 1, -1 }, .color = .{ 0, 1, 1, 1 } },
+        .{ .position = .{ -1, 1, 1 }, .color = .{ 0, 1, 1, 1 } },
+        .{ .position = .{ 1, 1, -1 }, .color = .{ 0, 1, 1, 1 } },
+        .{ .position = .{ -1, 1, -1 }, .color = .{ 0, 1, 1, 1 } },
+
+        // Bottom face (y = -1) - Magenta
+        .{ .position = .{ -1, -1, -1 }, .color = .{ 1, 0, 1, 1 } },
+        .{ .position = .{ 1, -1, -1 }, .color = .{ 1, 0, 1, 1 } },
+        .{ .position = .{ 1, -1, 1 }, .color = .{ 1, 0, 1, 1 } },
+        .{ .position = .{ -1, -1, -1 }, .color = .{ 1, 0, 1, 1 } },
+        .{ .position = .{ 1, -1, 1 }, .color = .{ 1, 0, 1, 1 } },
+        .{ .position = .{ -1, -1, 1 }, .color = .{ 1, 0, 1, 1 } },
     };
     const mesh = try ColoredVertexPipeline.Mesh.init(&coloredVertexPipeline, &vertices);
     defer mesh.deinit();

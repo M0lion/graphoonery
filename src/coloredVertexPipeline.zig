@@ -121,13 +121,14 @@ pub const ColoredVertexPipeline = struct {
         const offset: u64 = 0;
         c.vkCmdBindVertexBuffers(commandBuffer, 0, 1, &mesh.buffer, &offset);
 
-        c.vkCmdDraw(commandBuffer, 6, 1, 0, 0); // 3 vertices, 1 instance
+        c.vkCmdDraw(commandBuffer, mesh.vertices, 1, 0, 0); // 3 vertices, 1 instance
     }
 
     pub const Mesh = struct {
         pipeline: *ColoredVertexPipeline,
         buffer: c.VkBuffer,
         memory: c.VkDeviceMemory,
+        vertices: u32,
 
         pub fn init(pipeline: *ColoredVertexPipeline, vertices: []Vertex) !Mesh {
             const vertexBufferResult = try buffer.createBuffer(
@@ -161,6 +162,7 @@ pub const ColoredVertexPipeline = struct {
                 .pipeline = pipeline,
                 .buffer = vertexBuffer,
                 .memory = vertexBufferMemory,
+                .vertices = @intCast(vertices.len),
             };
         }
 
