@@ -207,7 +207,10 @@ pub const VulkanContext = struct {
         try vk.checkResult(c.vkBeginCommandBuffer(self.commandBuffer, &beginInfo));
 
         // Begin render pass
-        const clearColor = c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } };
+        const clearColor = [_]c.VkClearValue{
+            c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } },
+            c.VkClearValue{ .depthStencil = .{ .depth = 1, .stencil = 0 } },
+        };
 
         var renderPassInfo = c.VkRenderPassBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -221,7 +224,7 @@ pub const VulkanContext = struct {
                     .height = self.height,
                 },
             },
-            .clearValueCount = 1,
+            .clearValueCount = clearColor.len,
             .pClearValues = &clearColor,
         };
 

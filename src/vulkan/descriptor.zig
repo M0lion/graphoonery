@@ -46,7 +46,7 @@ pub fn createDescriptorPool(logicalDevice: c.VkDevice) !c.VkDescriptorPool {
     var poolInfo = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .pNext = null,
-        .flags = 0,
+        .flags = c.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
         .poolSizeCount = 1,
         .pPoolSizes = &poolSize,
         .maxSets = 1,

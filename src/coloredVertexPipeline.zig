@@ -19,6 +19,8 @@ pub const ColoredVertexPipeline = struct {
     descriptorSetLayout: c.VkDescriptorSetLayout,
     descriptorPool: c.VkDescriptorPool,
     context: VulkanContext,
+    fragmentShaderModule: c.VkShaderModule,
+    vertexShaderModule: c.VkShaderModule,
 
     pub fn init(vulkanContext: VulkanContext) !ColoredVertexPipeline {
         const logicalDevice = vulkanContext.logicalDevice;
@@ -96,12 +98,16 @@ pub const ColoredVertexPipeline = struct {
             .descriptorSetLayout = descriptorSetLayout,
             .descriptorPool = descriptorPool,
             .context = vulkanContext,
+            .fragmentShaderModule = fragShaderModule,
+            .vertexShaderModule = vertShaderModule,
         };
     }
 
     pub fn deinit(self: *ColoredVertexPipeline) void {
         const logicalDevice = self.context.logicalDevice;
 
+        c.vkDestroyShaderModule(logicalDevice, self.fragmentShaderModule, null);
+        c.vkDestroyShaderModule(logicalDevice, self.vertexShaderModule, null);
         pipe.destroyPipeline(logicalDevice, self.pipeline);
         pipe.destroyPipelineLayout(logicalDevice, self.layout);
         descriptor.destroyDescriptorPool(logicalDevice, self.descriptorPool);
