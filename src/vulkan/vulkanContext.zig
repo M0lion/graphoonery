@@ -16,6 +16,7 @@ const iv = @import("imageView.zig");
 const rp = @import("renderPass.zig");
 const sync = @import("sync.zig");
 const command = @import("command.zig");
+const img = @import("images.zig");
 
 pub const VulkanContextError = error{
     CouldNotFindPDevice,
@@ -42,6 +43,7 @@ pub const VulkanContext = struct {
     commandPool: c.VkCommandPool,
     commandBuffer: c.VkCommandBuffer,
     imageIndex: ?u32 = null,
+    depthImageResults: []img.ImageResult,
 
     pub fn init(window: *Window, allocator: std.mem.Allocator) !VulkanContext {
         const instance = try createInstance(.{
@@ -116,11 +118,18 @@ pub const VulkanContext = struct {
         std.log.debug("Creating render pass", .{});
         const renderPass = try rp.createRenderPass(logicalDevice, surfaceFormat.format);
 
+        const depthImageResult = try img.createDepthImages(allocator, logicalDevice, physicalDevice, width, height, swapchainImages.len);
+        var depthImageViews = try allocator.alloc(c.VkImageView, depthImageResult.len);
+        for (depthImageResult, 0..) |result, i| {
+            depthImageViews[i] = result.imageView;
+        }
+
         std.log.debug("Creating framebuffers", .{});
         const framebuffers = try fb.createFramebuffers(
             allocator,
             logicalDevice,
             swapchainImageViews,
+            depthImageViews,
             renderPass,
             width,
             height,
@@ -161,6 +170,7 @@ pub const VulkanContext = struct {
             .syncObjects = syncObjects,
             .commandPool = commandPool,
             .commandBuffer = commandBuffer,
+            .depthImageResults = depthImageResult,
         };
     }
 
@@ -331,10 +341,27 @@ pub const VulkanContext = struct {
             self.surfaceFormat.format,
         );
 
+        self.depthImageResults = try img.createDepthImages(
+            self.allocator,
+            self.logicalDevice,
+            self.physicalDevice,
+            width,
+            height,
+            swapchainImages.len,
+        );
+        var depthImageViews = try self.allocator.alloc(
+            c.VkImageView,
+            self.depthImageResults.len,
+        );
+        for (self.depthImageResults, 0..) |result, i| {
+            depthImageViews[i] = result.imageView;
+        }
+
         self.framebuffers = try fb.createFramebuffers(
             self.allocator,
             self.logicalDevice,
             self.swapchainImageViews,
+            depthImageViews,
             self.renderPass,
             width,
             height,
@@ -342,6 +369,8 @@ pub const VulkanContext = struct {
     }
 
     fn cleanupSwapchain(self: *VulkanContext) void {
+        img.freeImages(self.logicalDevice, self.depthImageResults);
+
         for (self.framebuffers) |framebuffer| {
             c.vkDestroyFramebuffer(self.logicalDevice, framebuffer, null);
         }

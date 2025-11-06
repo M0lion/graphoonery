@@ -1,6 +1,7 @@
 const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
+const mem = @import("memory.zig");
 
 pub fn createBuffer(
     physicalDevice: c.VkPhysicalDevice,
@@ -23,28 +24,14 @@ pub fn createBuffer(
     var buffer: c.VkBuffer = undefined;
     try vk.checkResult(c.vkCreateBuffer(logicalDevice, &bufferInfo, null, &buffer));
 
-    var memRequirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(logicalDevice, buffer, &memRequirements);
-
-    const memoryTypeIndex = try findMemoryType(
+    const memory = try mem.allocateBufferMemory(
+        logicalDevice,
         physicalDevice,
-        memRequirements.memoryTypeBits,
+        buffer,
         properties,
     );
 
-    var allocInfo = c.VkMemoryAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = null,
-        .allocationSize = memRequirements.size,
-        .memoryTypeIndex = memoryTypeIndex,
-    };
-
-    var bufferMemory: c.VkDeviceMemory = undefined;
-    try vk.checkResult(c.vkAllocateMemory(logicalDevice, &allocInfo, null, &bufferMemory));
-
-    try vk.checkResult(c.vkBindBufferMemory(logicalDevice, buffer, bufferMemory, 0));
-
-    return .{ .buffer = buffer, .memory = bufferMemory };
+    return .{ .buffer = buffer, .memory = memory };
 }
 
 pub fn destroyBuffer(logicalDevice: c.VkDevice, buffer: c.VkBuffer) void {
@@ -53,24 +40,4 @@ pub fn destroyBuffer(logicalDevice: c.VkDevice, buffer: c.VkBuffer) void {
 
 pub fn freeMemory(logicalDevice: c.VkDevice, memory: c.VkDeviceMemory) void {
     c.vkFreeMemory(logicalDevice, memory, null);
-}
-
-fn findMemoryType(
-    physicalDevice: c.VkPhysicalDevice,
-    typeFilter: u32,
-    properties: c.VkMemoryPropertyFlags,
-) !u32 {
-    var memProperties: c.VkPhysicalDeviceMemoryProperties = undefined;
-    c.vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    var i: u32 = 0;
-    while (i < memProperties.memoryTypeCount) : (i += 1) {
-        if ((typeFilter & (@as(u32, 1) << @intCast(i))) != 0 and
-            (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-        {
-            return i;
-        }
-    }
-
-    return error.NoSuitableMemoryType;
 }

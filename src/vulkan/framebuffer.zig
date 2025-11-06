@@ -6,6 +6,7 @@ pub fn createFramebuffers(
     allocator: std.mem.Allocator,
     logicalDevice: c.VkDevice,
     imageViews: []c.VkImageView,
+    depthImageViews: []c.VkImageView,
     renderPass: c.VkRenderPass,
     width: u32,
     height: u32,
@@ -13,14 +14,17 @@ pub fn createFramebuffers(
     const framebuffers = try allocator.alloc(c.VkFramebuffer, imageViews.len);
 
     for (imageViews, 0..) |view, i| {
-        const attachments = [_]c.VkImageView{view};
+        const attachments = [_]c.VkImageView{
+            view,
+            depthImageViews[i],
+        };
 
         var framebufferInfo = c.VkFramebufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .pNext = null,
             .flags = 0,
             .renderPass = renderPass,
-            .attachmentCount = 1,
+            .attachmentCount = 2,
             .pAttachments = &attachments,
             .width = width,
             .height = height,

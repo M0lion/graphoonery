@@ -169,6 +169,21 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .pDynamicStates = &dynamicStates,
     };
 
+    var depthStencil = c.VkPipelineDepthStencilStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .depthTestEnable = c.VK_TRUE,
+        .depthWriteEnable = c.VK_TRUE,
+        .depthCompareOp = c.VK_COMPARE_OP_LESS,
+        .depthBoundsTestEnable = c.VK_FALSE,
+        .minDepthBounds = 0.0,
+        .maxDepthBounds = 1.0,
+        .stencilTestEnable = c.VK_FALSE,
+        .front = std.mem.zeroes(c.VkStencilOpState),
+        .back = std.mem.zeroes(c.VkStencilOpState),
+    };
+
     var pipelineInfo = c.VkGraphicsPipelineCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = null,
@@ -180,7 +195,7 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .pViewportState = &viewportState,
         .pRasterizationState = &rasterizer,
         .pMultisampleState = &multisampling,
-        .pDepthStencilState = null,
+        .pDepthStencilState = &depthStencil,
         .pColorBlendState = &colorBlending,
         .pDynamicState = &dynamicState,
         .layout = pipelineLayout,
