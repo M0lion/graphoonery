@@ -11,6 +11,7 @@ pub const ColoredVertexPipeline = struct {
     pub const Vertex = struct {
         position: [3]f32,
         color: [4]f32,
+        normal: [4]f32,
     };
 
     pipeline: c.VkPipeline,
@@ -68,6 +69,12 @@ pub const ColoredVertexPipeline = struct {
                 .location = 1,
                 .format = c.VK_FORMAT_R32G32B32A32_SFLOAT,
                 .offset = @offsetOf(Vertex, "color"),
+            },
+            .{ // Normal
+                .binding = 0,
+                .location = 2,
+                .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = @offsetOf(Vertex, "normal"),
             },
         };
 
