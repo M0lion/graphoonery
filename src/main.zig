@@ -274,7 +274,7 @@ pub fn main() !void {
     var time: f32 = 0.0;
     while (window.pollEvents()) {
         width, height = window.getWindowSize();
-        t = math.Mat4.createRotation(time * 10, time * 6, time * 30);
+        t = math.Mat4.createRotation(time * 0, time * 6, time * 0);
         t = math.Mat4.createTranslation(0, 0, -5).multiply(&t);
         if (vulkanContext.width != width or vulkanContext.height != height) {
             try vulkanContext.resize();
