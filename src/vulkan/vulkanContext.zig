@@ -10,7 +10,7 @@ const s = @import("surface.zig");
 const pDevice = @import("physicalDevice.zig");
 const lDevice = @import("logicalDevice.zig");
 const sc = @import("swapchain.zig");
-const wayland_c = if (builtin.os.tag != .macos) @import("../windows/wayland_c.zig") else struct {};
+const wayland_c = if (builtin.os.tag != .macos) @import("../windows/wayland/wayland_c.zig") else struct {};
 const fb = @import("framebuffer.zig");
 const iv = @import("imageView.zig");
 const rp = @import("renderPass.zig");

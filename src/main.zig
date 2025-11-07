@@ -10,7 +10,7 @@ const command = @import("vulkan/command.zig");
 const sync = @import("vulkan/sync.zig");
 const buffer = @import("vulkan/buffer.zig");
 const descriptor = @import("vulkan/descriptor.zig");
-const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland_c.zig") else struct {
+const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland/wayland_c.zig") else struct {
     const c = struct {};
 };
 const math = @import("math/index.zig");

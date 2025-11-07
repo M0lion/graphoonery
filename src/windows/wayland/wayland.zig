@@ -1,9 +1,6 @@
 const std = @import("std");
-
-pub const c = @cImport({
-    @cInclude("wayland-client.h");
-    @cInclude("xdg-shell-client-protocol.h");
-});
+const c = @import("wayland_c.zig").c;
+const seat = @import("seat.zig");
 
 pub const WaylandWindow = struct {
     allocator: std.mem.Allocator,
@@ -124,6 +121,7 @@ fn registryGlobal(
     const ctx = global_context orelse return;
 
     const interface_str = std.mem.span(interface);
+    std.log.debug("Global: {s}", .{interface_str});
 
     if (std.mem.eql(u8, interface_str, std.mem.span(c.wl_compositor_interface.name))) {
         ctx.compositor = @ptrCast(c.wl_registry_bind(registry, name, &c.wl_compositor_interface, @min(version, 4)));
@@ -131,8 +129,11 @@ fn registryGlobal(
         ctx.xdg_wm_base = @ptrCast(c.wl_registry_bind(registry, name, &c.xdg_wm_base_interface, @min(version, 1)));
         _ = c.xdg_wm_base_add_listener(ctx.xdg_wm_base, &xdg_wm_base_listener, null);
     } else if (std.mem.eql(u8, interface_str, std.mem.span(c.wl_compositor_interface.name))) {
+        std.log.debug("ASDASDASASD", .{});
+    } else if (std.mem.eql(u8, interface_str, std.mem.span(c.wl_seat_interface.name))) {
         ctx.seat = @ptrCast(c.wl_registry_bind(registry, name, &c.wl_seat_interface, @min(version, 1)));
-        // c.wl_seat_add_listener(ctx.seat, &seat_base_listener, null);
+        const result = c.wl_seat_add_listener(ctx.seat, &seat.seatBaseListener, null);
+        std.log.debug("Seat register result: {}", .{result});
     }
 }
 

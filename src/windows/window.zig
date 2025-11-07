@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const wayland = @import("wayland_c.zig");
+const wayland = @import("wayland/wayland.zig");
 const macos = @import("macos.zig");
 const p = @import("../platform.zig");
 const platform = p.platform;

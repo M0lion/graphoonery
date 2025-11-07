@@ -2,7 +2,7 @@ const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
 const macos = @import("../windows/macos.zig");
-const wayland = @import("../windows/wayland_c.zig");
+const wayland = @import("../windows/wayland/wayland_c.zig");
 
 pub const CreateMetalSurfaceArgs = struct {
     windowHandle: *anyopaque,

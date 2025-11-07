@@ -24,6 +24,7 @@ pub fn build(b: *std.Build) void {
     const vulkan_headers = b.dependency("vulkan_headers", .{});
     exe.addIncludePath(vulkan_headers.path("include"));
 
+    exe.addIncludePath(b.path("src/windows"));
     // Link frameworks and libraries
     if (target.result.os.tag == .macos) {
         // Add Objective-C file
@@ -43,6 +44,7 @@ pub fn build(b: *std.Build) void {
         exe.linkSystemLibrary("wayland-client");
         exe.linkSystemLibrary("wayland-egl");
         exe.linkSystemLibrary("vulkan");
+        exe.linkSystemLibrary("xkbcommon");
     }
     exe.linkLibC();
 
