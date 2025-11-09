@@ -18,6 +18,7 @@ const shaders = @import("shaders");
 const vertShaderCode = shaders.vertex_vert_spv;
 const fragShaderCode = shaders.fragment_frag_spv;
 const ColoredVertexPipeline = @import("coloredVertexPipeline.zig").ColoredVertexPipeline;
+const dodec = @import("dodecahedron.zig");
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -248,10 +249,16 @@ pub fn main() !void {
     };
     const mesh = try ColoredVertexPipeline.Mesh.init(&coloredVertexPipeline, &vertices);
     defer mesh.deinit();
+    const dodecahedron = try dodec.getDodecahedron(allocator, &coloredVertexPipeline);
+    defer dodecahedron.deinit();
 
     var transform = try ColoredVertexPipeline.TransformUBO.init(&coloredVertexPipeline);
     defer transform.deinit() catch |err| {
         std.log.err("Failed to free transform: {}", .{err});
+    };
+    var dodecTransform = try ColoredVertexPipeline.TransformUBO.init(&coloredVertexPipeline);
+    defer dodecTransform.deinit() catch |err| {
+        std.log.err("Failed to free dodecTransform: {}", .{err});
     };
 
     // Flush all Wayland requests before rendering
@@ -268,14 +275,20 @@ pub fn main() !void {
 
     var t = math.Mat4.identity();
     var p = math.Mat4.createPerspective(90, aspect, 0.01, 10);
+    var dt = math.Mat4.identity();
     try transform.update(&t, &p);
+    try dodecTransform.update(&dt, &p);
 
     // Event loop
     var time: f32 = 0.0;
     while (window.pollEvents()) {
         width, height = window.getWindowSize();
-        t = math.Mat4.createRotation(time * 0, time * 6, time * 0);
+        t = math.Mat4.createRotation(time * 10, time * 6, time * 30);
         t = math.Mat4.createTranslation(0, 0, -5).multiply(&t);
+        t = math.Mat4.createTranslation(-1, 1.5, 0).multiply(&t);
+        dt = math.Mat4.createRotation(time * 6, time * 30, time * 10);
+        dt = math.Mat4.createTranslation(0, 0, -5).multiply(&dt);
+        dt = math.Mat4.createTranslation(1, -1.5, 0).multiply(&dt);
         if (vulkanContext.width != width or vulkanContext.height != height) {
             try vulkanContext.resize();
             aspect =
@@ -283,8 +296,10 @@ pub fn main() !void {
                 @as(f32, @floatFromInt(height));
             p = math.Mat4.createPerspective(90, aspect, 0.01, 10);
             try transform.update(&t, &p);
+            try dodecTransform.update(&dt, &p);
         } else {
             try transform.update(&t, null);
+            try dodecTransform.update(&dt, null);
         }
 
         {
@@ -293,6 +308,7 @@ pub fn main() !void {
                 @panic("Failed to end draw");
             };
             try coloredVertexPipeline.draw(commandBuffer, &transform, &mesh);
+            try coloredVertexPipeline.draw(commandBuffer, &dodecTransform, &dodecahedron);
         }
 
         time += 0.001;

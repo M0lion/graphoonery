@@ -143,7 +143,7 @@ pub const ColoredVertexPipeline = struct {
         memory: c.VkDeviceMemory,
         vertices: u32,
 
-        pub fn init(pipeline: *ColoredVertexPipeline, vertices: []Vertex) !Mesh {
+        pub fn init(pipeline: *ColoredVertexPipeline, vertices: []const Vertex) !Mesh {
             const vertexBufferResult = try buffer.createBuffer(
                 pipeline.context.physicalDevice,
                 pipeline.context.logicalDevice,

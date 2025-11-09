@@ -47,6 +47,7 @@ pub fn createDepthImage(
 ) !ImageResult {
     const format = c.VK_FORMAT_D32_SFLOAT;
     const imageCreateInfo = c.VkImageCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = c.VK_IMAGE_TYPE_2D,
         .extent = .{
             .width = width,
@@ -73,6 +74,7 @@ pub fn createDepthImage(
     );
 
     const viewInfo = c.VkImageViewCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image,
         .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
         .format = format,

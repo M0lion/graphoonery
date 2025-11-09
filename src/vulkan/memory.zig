@@ -49,6 +49,7 @@ pub fn allocateImageMemory(
     );
 
     const alloc_info = c.VkMemoryAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = requirements.size,
         .memoryTypeIndex = memoryTypeIndex,
     };

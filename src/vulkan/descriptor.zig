@@ -40,7 +40,7 @@ pub fn destroyDescriptorSetLayout(
 pub fn createDescriptorPool(logicalDevice: c.VkDevice) !c.VkDescriptorPool {
     var poolSize = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
+        .descriptorCount = 10,
     };
 
     var poolInfo = c.VkDescriptorPoolCreateInfo{
@@ -49,7 +49,7 @@ pub fn createDescriptorPool(logicalDevice: c.VkDevice) !c.VkDescriptorPool {
         .flags = c.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
         .poolSizeCount = 1,
         .pPoolSizes = &poolSize,
-        .maxSets = 1,
+        .maxSets = 10,
     };
 
     var descriptorPool: c.VkDescriptorPool = undefined;

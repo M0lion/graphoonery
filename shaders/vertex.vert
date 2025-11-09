@@ -12,6 +12,7 @@ layout(location = 2) in vec3 inNormal;
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec3 pos;
+layout(location = 3) out vec3 uv;
 
 void main() {
 	mat4 transform = ubo.transform * ubo.view;
@@ -19,4 +20,5 @@ void main() {
     fragColor = inColor;
 		normal = (transform * vec4(inNormal, 0.0)).xyz;
 		pos = gl_Position.xyz;
+		uv = inPosition;
 }
