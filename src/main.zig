@@ -20,10 +20,14 @@ const fragShaderCode = shaders.fragment_frag_spv;
 const ColoredVertexPipeline = @import("coloredVertexPipeline.zig").ColoredVertexPipeline;
 const cube = @import("cube.zig");
 const dodec = @import("dodecahedron.zig");
+const pam = @import("pam.zig");
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
+
+    var password = [_]u8{ 'f', 'o', 'o', 'b', 'a', 'r', 0 };
+    _ = pam.authenticate(allocator, password[0..]);
 
     std.log.debug("Window init", .{});
     var window = try windows.Window.init(allocator);

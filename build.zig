@@ -45,6 +45,7 @@ pub fn build(b: *std.Build) void {
         exe.linkSystemLibrary("wayland-egl");
         exe.linkSystemLibrary("vulkan");
         exe.linkSystemLibrary("xkbcommon");
+        exe.linkSystemLibrary("pam");
     }
     exe.linkLibC();
 
