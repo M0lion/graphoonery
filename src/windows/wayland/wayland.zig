@@ -2,198 +2,74 @@ const std = @import("std");
 const w = @import("wayland_c.zig");
 const c = w.c;
 const seat = @import("seat.zig");
+const WaylandConnection = @import("waylandConnection.zig").WaylandConnection;
+const xdg = @import("xdg.zig");
+const Surface = @import("surface.zig").Surface;
+const st = @import("seat.zig");
 
 pub const WaylandWindow = struct {
-    allocator: std.mem.Allocator,
-    display: ?*c.wl_display = null,
-    registry: ?*c.wl_registry = null,
-    compositor: ?*c.wl_compositor = null,
-    seat: ?*c.wl_seat = null,
-    xdg_wm_base: ?*c.xdg_wm_base = null,
+    connection: WaylandConnection = undefined,
 
-    surface: ?*c.wl_surface = null,
-    xdg_surface: ?*c.xdg_surface = null,
-    xdg_toplevel: ?*c.xdg_toplevel = null,
+    surface: Surface = undefined,
+    xdgSurface: xdg.Surface = undefined,
+    seat: st.Seat = undefined,
 
-    configured: bool = false,
     should_close: bool = false,
     width: u32,
     height: u32,
 
-    key_string_handler: ?*const fn ([]u8) void,
-    key_handler: ?*const fn (c_uint) void,
-
-    pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !WaylandWindow {
+    pub fn init(width: u32, height: u32) !WaylandWindow {
         return WaylandWindow{
-            .allocator = allocator,
             .width = width,
             .height = height,
-            .key_string_handler = null,
-            .key_handler = null,
         };
     }
 
-    pub fn initConnection(self: *WaylandWindow) !void {
-        self.display = c.wl_display_connect(null);
-        if (self.display == null) return error.NoDisplay;
+    pub fn initConnection(self: *WaylandWindow, allocator: std.mem.Allocator) !void {
+        try self.connection.init(allocator);
 
-        self.registry = c.wl_display_get_registry(self.display);
-        if (self.registry == null) return error.NoRegistry;
-
-        try w.checkResult(c.wl_registry_add_listener(self.registry, &registry_listener, self));
-        try w.checkResult(c.wl_display_roundtrip(self.display));
-
-        if (self.compositor == null) return error.NoCompositor;
-        if (self.xdg_wm_base == null) return error.NoXdgWmBase;
-
-        if (self.registry) |r| {
-            c.wl_registry_destroy(r);
-            self.registry = null;
-        }
+        if (self.connection.compositor == null) return error.NoCompositor;
+        if (self.connection.xdgWmBase == null) return error.NoXdgWmBase;
+        const wlSeat = self.connection.seat orelse return error.NoWlSeat;
+        try self.seat.init(wlSeat);
 
         std.log.info("Wayland connection established", .{});
     }
 
-    pub fn createWindow(self: *WaylandWindow) !void {
-        self.surface = c.wl_compositor_create_surface(self.compositor);
-        if (self.surface == null) return error.NoSurface;
+    pub fn createWindow(self: *WaylandWindow, title: []const u8) !void {
+        if (self.connection.compositor) |compositor| {
+            try self.surface.init(compositor);
+        } else {
+            return error.NoCompositor;
+        }
 
-        self.xdg_surface = c.xdg_wm_base_get_xdg_surface(self.xdg_wm_base, self.surface);
-        if (self.xdg_surface == null) return error.NoXdgSurface;
+        if (self.connection.xdgWmBase) |wmBase| {
+            try self.xdgSurface.init(wmBase, self.surface.surface, title);
+        } else {
+            return error.NoXdgWmBase;
+        }
 
-        _ = c.xdg_surface_add_listener(self.xdg_surface, &xdg_surface_listener, null);
-
-        self.xdg_toplevel = c.xdg_surface_get_toplevel(self.xdg_surface);
-        if (self.xdg_toplevel == null) return error.NoXdgToplevel;
-
-        _ = c.xdg_toplevel_add_listener(self.xdg_toplevel, &xdg_toplevel_listener, self);
-        std.log.debug("Self addr: {*}", .{self});
-        c.xdg_toplevel_set_title(self.xdg_toplevel, "Vulkan Window");
-
-        c.wl_surface_commit(self.surface);
-
-        // while (!self.configured) {
-        //     _ = c.wl_display_dispatch(self.display);
-        // }
+        self.surface.commit();
 
         std.log.info("Window created", .{});
     }
 
-    pub fn commit(self: *WaylandWindow) void {
-        c.wl_surface_commit(self.surface);
-        _ = c.wl_display_roundtrip(self.display);
+    pub fn commit(self: *WaylandWindow) !void {
+        self.surface.commit();
+        try self.connection.roundtrip();
     }
 
-    pub fn dispatch(self: *WaylandWindow) void {
-        if (self.display) |display| {
-            while (c.wl_display_prepare_read(display) != 0) {
-                _ = c.wl_display_dispatch_pending(display);
-            }
-            _ = c.wl_display_flush(display);
-            _ = c.wl_display_read_events(display);
-            _ = c.wl_display_dispatch_pending(display);
-        }
+    pub fn dispatch(self: *WaylandWindow) !void {
+        try self.connection.dispatch();
+
+        self.should_close = self.xdgSurface.shouldClose;
+        self.width = @intCast(self.xdgSurface.width);
+        self.height = @intCast(self.xdgSurface.height);
     }
 
     pub fn deinit(self: *WaylandWindow) void {
-        if (self.xdg_toplevel) |t| c.xdg_toplevel_destroy(t);
-        if (self.xdg_surface) |s| c.xdg_surface_destroy(s);
-        if (self.surface) |s| c.wl_surface_destroy(s);
-        if (self.xdg_wm_base) |base| c.xdg_wm_base_destroy(base);
-        if (self.compositor) |comp| c.wl_compositor_destroy(comp);
-        // Registry is destroyed in initConnection, no need to destroy again
-        if (self.display) |d| c.wl_display_disconnect(d);
+        self.xdgSurface.deinit();
+        self.surface.deinit();
+        self.connection.deinit();
     }
 };
-
-// Registry listener
-const registry_listener = c.wl_registry_listener{
-    .global = registryGlobal,
-    .global_remove = registryGlobalRemove,
-};
-
-fn registryGlobal(
-    data: ?*anyopaque,
-    registry: ?*c.wl_registry,
-    name: u32,
-    interface: [*c]const u8,
-    version: u32,
-) callconv(.c) void {
-    const ctx = @as(?*WaylandWindow, @ptrCast(@alignCast(data))) orelse return;
-
-    const interface_str = std.mem.span(interface);
-    std.log.debug("Global: {s}", .{interface_str});
-
-    if (std.mem.eql(u8, interface_str, std.mem.span(c.wl_compositor_interface.name))) {
-        ctx.compositor = @ptrCast(c.wl_registry_bind(registry, name, &c.wl_compositor_interface, @min(version, 4)));
-    } else if (std.mem.eql(u8, interface_str, std.mem.span(c.xdg_wm_base_interface.name))) {
-        ctx.xdg_wm_base = @ptrCast(c.wl_registry_bind(registry, name, &c.xdg_wm_base_interface, @min(version, 1)));
-        _ = c.xdg_wm_base_add_listener(ctx.xdg_wm_base, &xdg_wm_base_listener, null);
-    } else if (std.mem.eql(u8, interface_str, std.mem.span(c.wl_compositor_interface.name))) {
-        std.log.debug("ASDASDASASD", .{});
-    } else if (std.mem.eql(u8, interface_str, std.mem.span(c.wl_seat_interface.name))) {
-        ctx.seat = @ptrCast(c.wl_registry_bind(registry, name, &c.wl_seat_interface, @min(version, 1)));
-        const result = c.wl_seat_add_listener(ctx.seat, &seat.seatBaseListener, ctx);
-        std.log.debug("Seat register result: {}", .{result});
-    }
-}
-
-fn registryGlobalRemove(data: ?*anyopaque, registry: ?*c.wl_registry, name: u32) callconv(.c) void {
-    _ = data;
-    _ = registry;
-    _ = name;
-}
-
-// XDG WM Base listener
-const xdg_wm_base_listener = c.xdg_wm_base_listener{
-    .ping = xdgWmBasePing,
-};
-
-fn xdgWmBasePing(data: ?*anyopaque, xdg_wm_base: ?*c.xdg_wm_base, serial: u32) callconv(.c) void {
-    _ = data;
-    c.xdg_wm_base_pong(xdg_wm_base, serial);
-}
-
-// XDG Surface listener
-const xdg_surface_listener = c.xdg_surface_listener{
-    .configure = xdgSurfaceConfigure,
-};
-
-fn xdgSurfaceConfigure(data: ?*anyopaque, xdg_surface: ?*c.xdg_surface, serial: u32) callconv(.c) void {
-    const ctx = @as(?*WaylandWindow, @ptrCast(@alignCast(data))) orelse return;
-
-    c.xdg_surface_ack_configure(xdg_surface, serial);
-    ctx.configured = true;
-    std.log.info("Surface configured", .{});
-}
-
-// XDG Toplevel listener
-const xdg_toplevel_listener = c.xdg_toplevel_listener{
-    .configure = xdgToplevelConfigure,
-    .close = xdgToplevelClose,
-};
-
-fn xdgToplevelConfigure(
-    data: ?*anyopaque,
-    xdg_toplevel: ?*c.xdg_toplevel,
-    width: i32,
-    height: i32,
-    states: ?*c.wl_array,
-) callconv(.c) void {
-    _ = xdg_toplevel;
-    _ = states;
-    const ctx = @as(?*WaylandWindow, @ptrCast(@alignCast(data))) orelse return;
-
-    if (width > 0 and height > 0) {
-        ctx.width = @intCast(width);
-        ctx.height = @intCast(height);
-        std.log.info("Window resized to {}x{}", .{ ctx.width, ctx.height });
-    }
-}
-
-fn xdgToplevelClose(data: ?*anyopaque, xdg_toplevel: ?*c.xdg_toplevel) callconv(.c) void {
-    var waylandWindow: *WaylandWindow = @ptrCast(@alignCast(data));
-    _ = xdg_toplevel;
-    std.log.info("Window close requested, {*}", .{waylandWindow});
-    waylandWindow.should_close = true;
-}

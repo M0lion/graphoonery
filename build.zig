@@ -38,9 +38,8 @@ pub fn build(b: *std.Build) void {
         exe.linkSystemLibrary("MoltenVK");
     } else {
         // Generate xdg-shell protocol C headers
-        generateWaylandProtocol(b, exe);
+        generateWaylandProtocols(b, exe);
 
-        module.addImport("wayland", getWayland(b));
         exe.linkSystemLibrary("wayland-client");
         exe.linkSystemLibrary("wayland-egl");
         exe.linkSystemLibrary("vulkan");
@@ -58,39 +57,35 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 }
 
-fn getWayland(b: *std.Build) *std.Build.Module {
-    const scanner = Scanner.create(b, .{});
-
-    const wayland = b.createModule(.{ .root_source_file = scanner.result });
-
-    scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
-    scanner.addCustomProtocol(b.path("protocols/wlr-layer-shell-v1.xml"));
-
-    // Pass the maximum version implemented by your wayland server or client.
-    // Requests, events, enums, etc. from newer versions will not be generated,
-    // ensuring forwards compatibility with newer protocol xml.
-    // This will also generate code for interfaces created using the provided
-    // global interface, in this example wl_keyboard, wl_pointer, xdg_surface,
-    // xdg_toplevel, etc. would be generated as well.
-    scanner.generate("wl_compositor", 6);
-    scanner.generate("wl_shm", 1);
-    scanner.generate("wl_output", 4);
-    scanner.generate("wl_seat", 4);
-    scanner.generate("xdg_wm_base", 3);
-    scanner.generate("zwlr_layer_shell_v1", 5);
-
-    return wayland;
+fn generateWaylandProtocols(b: *std.Build, exe: *std.Build.Step.Compile) void {
+    generateWaylandProtocol(
+        b,
+        exe,
+        "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml",
+    );
+    generateWaylandProtocol(
+        b,
+        exe,
+        "/usr/share/wayland-protocols/staging/ext-session-lock/ext-session-lock-v1.xml",
+    );
 }
 
-fn generateWaylandProtocol(b: *std.Build, exe: *std.Build.Step.Compile) void {
+fn generateWaylandProtocol(
+    b: *std.Build,
+    exe: *std.Build.Step.Compile,
+    comptime path: []const u8,
+) void {
     // Run wayland-scanner to generate C protocol files
     const wayland_scanner = b.addSystemCommand(&.{ "wayland-scanner", "client-header" });
-    wayland_scanner.addArg("/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml");
-    const header_file = wayland_scanner.addOutputFileArg("xdg-shell-client-protocol.h");
+    wayland_scanner.addArg(path);
+    const name = comptime std.fs.path.stem(path);
+    const headerFileName = std.fmt.comptimePrint("{s}-client-protocol.h", .{name});
+    const header_file = wayland_scanner.addOutputFileArg(headerFileName);
 
     const wayland_scanner_code = b.addSystemCommand(&.{ "wayland-scanner", "private-code" });
-    wayland_scanner_code.addArg("/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml");
-    const code_file = wayland_scanner_code.addOutputFileArg("xdg-shell-client-protocol.c");
+    wayland_scanner_code.addArg(path);
+    const codeFileName = std.fmt.comptimePrint("{s}-client-protocol.c", .{name});
+    const code_file = wayland_scanner_code.addOutputFileArg(codeFileName);
 
     // Add generated files to the executable
     exe.addCSourceFile(.{

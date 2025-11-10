@@ -22,6 +22,7 @@ const cube = @import("cube.zig");
 const dodec = @import("dodecahedron.zig");
 const pam = @import("pam.zig");
 const platform = @import("platform.zig").platform;
+const lock = @import("lockscreen.zig");
 
 var password = std.mem.zeroes([50]u8);
 var passwordCharCount: usize = 0;
@@ -35,13 +36,14 @@ fn key_handler(key: c_uint) void {
         } else {
             std.log.debug("Fail", .{});
         }
-        @memset(password[0..passwordCharCount], 0);
+        @memset(password[0..], 0);
         passwordCharCount = 0;
     }
 }
 
 fn key_string_handler(char: []u8) void {
     for (char) |ch| {
+        if (ch == 13) return;
         password[passwordCharCount] = ch;
         passwordCharCount += 1;
     }
@@ -52,19 +54,37 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     globalAllocator = allocator;
 
+    if (platform == .linux) {
+        const envMap = try std.process.getEnvMap(allocator);
+        if (envMap.get("LOCK") != null) {
+            try lock.startLockscreen();
+            return;
+        }
+    }
+
     std.log.debug("Window init", .{});
-    var window = try windows.Window.init(allocator);
-    try window.finishInit();
+    var window = try windows.Window.init();
+    try window.finishInit(allocator);
     std.log.debug("Window: {*}", .{&window});
     defer window.deinit();
 
     if (platform == .linux) {
-        window.windowHandle.key_string_handler = key_string_handler;
-        window.windowHandle.key_handler = key_handler;
+        window.windowHandle.seat.keyStringHandler = key_string_handler;
+        window.windowHandle.seat.keyHandler = key_handler;
     }
 
+    var width, var height = window.getWindowSize();
+
     std.log.debug("Vulkan init", .{});
-    var vulkanContext = try VulkanContext.init(&window, allocator);
+    var surfaceData: VulkanContext.SurfaceData = undefined;
+    switch (platform) {
+        .linux => surfaceData = .{
+            .display = window.windowHandle.connection.display,
+            .surface = window.windowHandle.surface.surface,
+        },
+        .macos => surfaceData = window.windowHandle,
+    }
+    var vulkanContext = try VulkanContext.init(surfaceData, width, height, allocator);
     defer vulkanContext.deinit();
 
     const logicalDevice = vulkanContext.logicalDevice;
@@ -89,12 +109,11 @@ pub fn main() !void {
 
     // Flush all Wayland requests before rendering
     if (builtin.os.tag != .macos) {
-        if (window.windowHandle.display) |display| {
+        if (window.windowHandle.connection.display) |display| {
             _ = wayland_c.c.wl_display_flush(display);
         }
     }
 
-    var width, var height = window.getWindowSize();
     var aspect =
         @as(f32, @floatFromInt(width)) /
         @as(f32, @floatFromInt(height));
@@ -107,7 +126,7 @@ pub fn main() !void {
 
     // Event loop
     var time: f32 = 0.0;
-    while (window.pollEvents()) {
+    while (try window.pollEvents()) {
         width, height = window.getWindowSize();
         t = math.Mat4.createRotation(time * 10, time * 6, time * 30);
         t = math.Mat4.createTranslation(0, 0, -5).multiply(&t);
@@ -116,7 +135,7 @@ pub fn main() !void {
         dt = math.Mat4.createTranslation(0, 0, -5).multiply(&dt);
         dt = math.Mat4.createTranslation(1, -1.5, 0).multiply(&dt);
         if (vulkanContext.width != width or vulkanContext.height != height) {
-            try vulkanContext.resize();
+            try vulkanContext.resize(width, height);
             aspect =
                 @as(f32, @floatFromInt(width)) /
                 @as(f32, @floatFromInt(height));

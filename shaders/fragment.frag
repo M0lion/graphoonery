@@ -14,7 +14,7 @@ vec3 hsv2rgb(vec3 c) {
 }
 
 void main() {
-	float luminance = 10;
+	float luminance = 20;
 	vec3 pointLight = vec3(-1,0,3);
 	// Hardcoded light direction (pointing down and to the right)
 	vec3 lightDir = pos - pointLight;

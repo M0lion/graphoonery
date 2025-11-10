@@ -33,10 +33,10 @@ fn getWindowHeight(windowHandle: WindowHandle) struct { u32, u32 } {
 pub const Window = struct {
     windowHandle: WindowHandle,
 
-    pub fn init(allocator: std.mem.Allocator) !Window {
+    pub fn init() !Window {
         const windowHandle = switch (comptime platform) {
             .macos => macos.createMacWindow() orelse @panic("Could not create window"),
-            .linux => try wayland.WaylandWindow.init(allocator, 800, 600),
+            .linux => try wayland.WaylandWindow.init(800, 600),
         };
 
         return Window{
@@ -55,12 +55,12 @@ pub const Window = struct {
         }
     }
 
-    pub fn finishInit(self: *Window) !void {
+    pub fn finishInit(self: *Window, allocator: std.mem.Allocator) !void {
         switch (comptime platform) {
             .macos => {},
             .linux => {
-                try self.windowHandle.initConnection();
-                try self.windowHandle.createWindow();
+                try self.windowHandle.initConnection(allocator);
+                try self.windowHandle.createWindow("Vulkan Window");
             },
         }
     }
@@ -69,16 +69,16 @@ pub const Window = struct {
         return getWindowHeight(self.windowHandle);
     }
 
-    pub fn commit(self: *Window) void {
+    pub fn commit(self: *Window) !void {
         switch (comptime platform) {
             .linux => {
-                self.windowHandle.commit();
+                try self.windowHandle.commit();
             },
             .macos => {},
         }
     }
 
-    pub fn pollEvents(self: *Window) bool {
+    pub fn pollEvents(self: *Window) !bool {
         switch (comptime platform) {
             .macos => {
                 var event: macos.MacEvent = undefined;
@@ -94,7 +94,7 @@ pub const Window = struct {
                 return result;
             },
             .linux => {
-                self.windowHandle.dispatch();
+                try self.windowHandle.dispatch();
                 return !self.windowHandle.should_close;
             },
         }

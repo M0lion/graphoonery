@@ -13,9 +13,7 @@ fn conv_callback(
     const appdata: ?*const Appdata = @ptrCast(@alignCast(appdata_ptr));
 
     // Allocate the response array
-    const responses: [*c]c.struct_pam_response = @ptrCast(@alignCast(
-        c.calloc(@intCast(num_msg), @sizeOf(c.struct_pam_response))
-    ));
+    const responses: [*c]c.struct_pam_response = @ptrCast(@alignCast(c.calloc(@intCast(num_msg), @sizeOf(c.struct_pam_response))));
     if (responses == null) {
         return c.PAM_BUF_ERR;
     }

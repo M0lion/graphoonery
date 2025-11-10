@@ -23,7 +23,14 @@ pub const VulkanContextError = error{
 };
 
 pub const VulkanContext = struct {
-    window: *Window,
+    pub const SurfaceData = switch (platform) {
+        .linux => struct {
+            display: ?*wayland_c.c.wl_display,
+            surface: ?*wayland_c.c.wl_surface,
+        },
+        .macos => *anyopaque,
+    };
+
     allocator: std.mem.Allocator,
     surface: c.VkSurfaceKHR,
     instance: c.VkInstance,
@@ -45,7 +52,7 @@ pub const VulkanContext = struct {
     imageIndex: ?u32 = null,
     depthImageResults: []img.ImageResult,
 
-    pub fn init(window: *Window, allocator: std.mem.Allocator) !VulkanContext {
+    pub fn init(surfaceData: SurfaceData, width: u32, height: u32, allocator: std.mem.Allocator) !VulkanContext {
         const instance = try createInstance(.{
             .name = "Vulkan Test",
         });
@@ -53,12 +60,12 @@ pub const VulkanContext = struct {
         var surface: c.VkSurfaceKHR = null;
         switch (comptime platform) {
             .macos => {
-                surface = try s.createMetalSurface(instance, .{ .windowHandle = window.windowHandle });
+                surface = try s.createMetalSurface(instance, .{ .windowHandle = surfaceData });
             },
             .linux => {
                 surface = try s.createWaylandSurface(instance, .{
-                    .display = window.windowHandle.display,
-                    .surface = window.windowHandle.surface,
+                    .display = surfaceData.display,
+                    .surface = surfaceData.surface,
                 });
             },
         }
@@ -80,14 +87,14 @@ pub const VulkanContext = struct {
         c.vkGetDeviceQueue(logicalDevice, @intCast(queueFamily), 0, &queue);
 
         // Flush Wayland requests before creating swapchain
-        if (builtin.os.tag != .macos) {
-            if (window.windowHandle.display) |display| {
-                _ = wayland_c.c.wl_display_flush(display);
-            }
-        }
+        //if (builtin.os.tag != .macos) {
+        //    if (window.windowHandle.connection.display) |display| {
+        //        _ = wayland_c.c.wl_display_flush(display);
+        //    }
+        //}
 
-        std.log.debug("Getting window dimensions", .{});
-        const width, const height = window.getWindowSize();
+        //std.log.debug("Getting window dimensions", .{});
+        //const width, const height = window.getWindowSize();
 
         const surfaceFormat = try sc.getSurfaceFormat(
             allocator,
@@ -135,8 +142,8 @@ pub const VulkanContext = struct {
             height,
         );
 
-        std.log.debug("Commiting surface", .{});
-        window.commit();
+        //std.log.debug("Commiting surface", .{});
+        //try window.commit();
 
         const commandPool = try command.createCommandPool(
             logicalDevice,
@@ -151,7 +158,6 @@ pub const VulkanContext = struct {
         const syncObjects = try sync.createSyncObjects(logicalDevice);
 
         return VulkanContext{
-            .window = window,
             .allocator = allocator,
             .instance = instance,
             .surface = surface,
@@ -314,9 +320,8 @@ pub const VulkanContext = struct {
         try vk.checkResult(c.vkQueuePresentKHR(self.queue, &presentInfo));
     }
 
-    pub fn resize(self: *VulkanContext) !void {
+    pub fn resize(self: *VulkanContext, width: u32, height: u32) !void {
         //const oldSwapchain = self.swapchain;
-        const width, const height = self.window.getWindowSize();
         self.width = width;
         self.height = height;
         try vk.checkResult(c.vkDeviceWaitIdle(self.logicalDevice));
