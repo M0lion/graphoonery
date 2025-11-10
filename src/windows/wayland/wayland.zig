@@ -1,5 +1,6 @@
 const std = @import("std");
-const c = @import("wayland_c.zig").c;
+const w = @import("wayland_c.zig");
+const c = w.c;
 const seat = @import("seat.zig");
 
 pub const WaylandWindow = struct {
@@ -19,25 +20,28 @@ pub const WaylandWindow = struct {
     width: u32,
     height: u32,
 
+    key_string_handler: ?*const fn ([]u8) void,
+    key_handler: ?*const fn (c_uint) void,
+
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !WaylandWindow {
         return WaylandWindow{
             .allocator = allocator,
             .width = width,
             .height = height,
+            .key_string_handler = null,
+            .key_handler = null,
         };
     }
 
     pub fn initConnection(self: *WaylandWindow) !void {
-        global_context = self;
-
         self.display = c.wl_display_connect(null);
         if (self.display == null) return error.NoDisplay;
 
         self.registry = c.wl_display_get_registry(self.display);
         if (self.registry == null) return error.NoRegistry;
 
-        _ = c.wl_registry_add_listener(self.registry, &registry_listener, null);
-        _ = c.wl_display_roundtrip(self.display);
+        try w.checkResult(c.wl_registry_add_listener(self.registry, &registry_listener, self));
+        try w.checkResult(c.wl_display_roundtrip(self.display));
 
         if (self.compositor == null) return error.NoCompositor;
         if (self.xdg_wm_base == null) return error.NoXdgWmBase;
@@ -102,8 +106,6 @@ pub const WaylandWindow = struct {
     }
 };
 
-var global_context: ?*WaylandWindow = null;
-
 // Registry listener
 const registry_listener = c.wl_registry_listener{
     .global = registryGlobal,
@@ -117,8 +119,7 @@ fn registryGlobal(
     interface: [*c]const u8,
     version: u32,
 ) callconv(.c) void {
-    _ = data;
-    const ctx = global_context orelse return;
+    const ctx = @as(?*WaylandWindow, @ptrCast(@alignCast(data))) orelse return;
 
     const interface_str = std.mem.span(interface);
     std.log.debug("Global: {s}", .{interface_str});
@@ -132,7 +133,7 @@ fn registryGlobal(
         std.log.debug("ASDASDASASD", .{});
     } else if (std.mem.eql(u8, interface_str, std.mem.span(c.wl_seat_interface.name))) {
         ctx.seat = @ptrCast(c.wl_registry_bind(registry, name, &c.wl_seat_interface, @min(version, 1)));
-        const result = c.wl_seat_add_listener(ctx.seat, &seat.seatBaseListener, null);
+        const result = c.wl_seat_add_listener(ctx.seat, &seat.seatBaseListener, ctx);
         std.log.debug("Seat register result: {}", .{result});
     }
 }
@@ -159,8 +160,7 @@ const xdg_surface_listener = c.xdg_surface_listener{
 };
 
 fn xdgSurfaceConfigure(data: ?*anyopaque, xdg_surface: ?*c.xdg_surface, serial: u32) callconv(.c) void {
-    _ = data;
-    const ctx = global_context orelse return;
+    const ctx = @as(?*WaylandWindow, @ptrCast(@alignCast(data))) orelse return;
 
     c.xdg_surface_ack_configure(xdg_surface, serial);
     ctx.configured = true;
@@ -180,10 +180,9 @@ fn xdgToplevelConfigure(
     height: i32,
     states: ?*c.wl_array,
 ) callconv(.c) void {
-    _ = data;
     _ = xdg_toplevel;
     _ = states;
-    const ctx = global_context orelse return;
+    const ctx = @as(?*WaylandWindow, @ptrCast(@alignCast(data))) orelse return;
 
     if (width > 0 and height > 0) {
         ctx.width = @intCast(width);

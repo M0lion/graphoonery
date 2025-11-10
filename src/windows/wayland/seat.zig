@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("wayland_c.zig").c;
+const WaylandWindow = @import("wayland.zig").WaylandWindow;
 
 pub const seatBaseListener = c.wl_seat_listener{
     .capabilities = seatCapabilities,
@@ -136,7 +137,7 @@ fn keyboardLeaveListener(
 }
 
 fn keyboardKeyListener(
-    _: ?*anyopaque,
+    data: ?*anyopaque,
     _: ?*c.wl_keyboard,
     serial: c_uint,
     time: c_uint,
@@ -145,6 +146,7 @@ fn keyboardKeyListener(
 ) callconv(.c) void {
     _ = serial;
     _ = time;
+    const window = @as(?*WaylandWindow, @ptrCast(@alignCast(data))) orelse @panic("keyboardKeyListener is null");
 
     const pressed = state == c.WL_KEYBOARD_KEY_STATE_PRESSED;
 
@@ -155,6 +157,10 @@ fn keyboardKeyListener(
     }
 
     if (keyboard_state.xkb_state) |xkb_state| {
+        if (window.key_handler) |key_handler| {
+            key_handler(key);
+        }
+
         // Wayland keycode is evdev keycode + 8
         const xkb_keycode = key + 8;
         const keysym = c.xkb_state_key_get_one_sym(xkb_state, xkb_keycode);
@@ -182,6 +188,9 @@ fn keyboardKeyListener(
                         if (len > 0) {
                             const utf8_char = buf[0..@intCast(len - 1)]; // -1 to exclude null terminator
                             std.log.debug("Composed character: {s}", .{utf8_char});
+                            if (window.key_string_handler) |key_string_handler| {
+                                key_string_handler(utf8_char);
+                            }
                         }
 
                         // Reset compose state for next sequence
@@ -211,6 +220,9 @@ fn keyboardKeyListener(
 
         if (utf8_len > 0) {
             const utf8_char = utf8_buf[0..@intCast(utf8_len)];
+            if (window.key_string_handler) |key_string_handler| {
+                key_string_handler(utf8_char);
+            }
             std.log.debug("Key: {s} ('{s} - {}')", .{
                 std.mem.sliceTo(&name_buf, 0),
                 utf8_char,

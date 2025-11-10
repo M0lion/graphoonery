@@ -21,19 +21,47 @@ const ColoredVertexPipeline = @import("coloredVertexPipeline.zig").ColoredVertex
 const cube = @import("cube.zig");
 const dodec = @import("dodecahedron.zig");
 const pam = @import("pam.zig");
+const platform = @import("platform.zig").platform;
+
+var password = std.mem.zeroes([50]u8);
+var passwordCharCount: usize = 0;
+var globalAllocator: ?std.mem.Allocator = undefined;
+
+fn key_handler(key: c_uint) void {
+    if (key == 28) {
+        std.log.debug("Authenticating with password \"{s}\"", .{password});
+        if (pam.authenticate(globalAllocator.?, password[0..])) {
+            std.log.debug("Success", .{});
+        } else {
+            std.log.debug("Fail", .{});
+        }
+        @memset(password[0..passwordCharCount], 0);
+        passwordCharCount = 0;
+    }
+}
+
+fn key_string_handler(char: []u8) void {
+    for (char) |ch| {
+        password[passwordCharCount] = ch;
+        passwordCharCount += 1;
+    }
+}
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
-
-    var password = [_]u8{ 'f', 'o', 'o', 'b', 'a', 'r', 0 };
-    _ = pam.authenticate(allocator, password[0..]);
+    globalAllocator = allocator;
 
     std.log.debug("Window init", .{});
     var window = try windows.Window.init(allocator);
     try window.finishInit();
     std.log.debug("Window: {*}", .{&window});
     defer window.deinit();
+
+    if (platform == .linux) {
+        window.windowHandle.key_string_handler = key_string_handler;
+        window.windowHandle.key_handler = key_handler;
+    }
 
     std.log.debug("Vulkan init", .{});
     var vulkanContext = try VulkanContext.init(&window, allocator);
