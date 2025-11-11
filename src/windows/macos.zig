@@ -1,6 +1,8 @@
-const c = @cImport({
+pub const c = @cImport({
     @cInclude("macos_types.h");
 });
+
+pub const MacEvent = c.MacEvent;
 
 pub extern fn createMacWindow() ?*anyopaque;
 pub extern fn pollMacEvent(event: *c.MacEvent) bool;

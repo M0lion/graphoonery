@@ -82,7 +82,16 @@ pub const Window = struct {
         switch (comptime platform) {
             .macos => {
                 var event: macos.MacEvent = undefined;
-                return macos.pollMacEvent(&event);
+                const result = macos.pollMacEvent(&event);
+                if (event.type == macos.c.EventTypeKeyDown) {
+                    const eventData: *macos.c.KeyEventData = @ptrCast(@alignCast(&event.data));
+                    std.log.debug(
+                        "Key down: {} {s}",
+                        .{ eventData.keyCode, eventData.text },
+                    );
+                    if (eventData.keyCode == 53) return false;
+                }
+                return result;
             },
             .linux => {
                 self.windowHandle.dispatch();
