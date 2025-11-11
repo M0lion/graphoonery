@@ -17,9 +17,11 @@ pub const SessionLock = struct {
     lock: *c.ext_session_lock_v1,
     outputs: std.ArrayList(*Output) = undefined,
     seat: st.Seat = undefined,
+    locked: bool = false,
 
     pub fn init(self: *SessionLock, connection: *WaylandConnection, allocator: std.mem.Allocator) !void {
         self.allocator = allocator;
+        self.locked = false;
         const wlSeat = connection.seat orelse return error.NoSeat;
         try self.seat.init(wlSeat);
         try connection.roundtrip();
@@ -46,7 +48,19 @@ pub const SessionLock = struct {
     }
 
     pub fn deinit(self: *SessionLock) void {
-        c.ext_session_lock_v1_destroy(self.lock);
+        // Clean up all outputs
+        for (self.outputs.items) |output| {
+            output.lockSurface.deinit();
+            output.surface.deinit();
+            self.allocator.destroy(output);
+        }
+        self.outputs.deinit(self.allocator);
+
+        // Clean up seat
+        self.seat.deinit();
+
+        // Unlock and destroy the session lock
+        c.ext_session_lock_v1_unlock_and_destroy(self.lock);
     }
 };
 
@@ -55,7 +69,9 @@ const sessionLockListener = c.ext_session_lock_v1_listener{
     .locked = sessionLockLocked,
 };
 
-fn sessionLockLocked(_: ?*anyopaque, _: ?*c.ext_session_lock_v1) callconv(.c) void {
+fn sessionLockLocked(data: ?*anyopaque, _: ?*c.ext_session_lock_v1) callconv(.c) void {
+    const self = @as(*SessionLock, @ptrCast(@alignCast(data.?)));
+    self.locked = true;
     std.log.debug("Locked", .{});
 }
 

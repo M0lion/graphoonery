@@ -20,6 +20,7 @@ pub const Surface = struct {
 
 pub const LockSurface = struct {
     surface: *c.ext_session_lock_surface_v1 = undefined,
+    configured: bool = false,
 
     pub fn init(
         self: *LockSurface,
@@ -32,9 +33,34 @@ pub const LockSurface = struct {
             surface,
             output,
         ) orelse return error.NoSurface;
+        self.configured = false;
+        try w.checkResult(c.ext_session_lock_surface_v1_add_listener(
+            self.surface,
+            &lockSurfaceListener,
+            self,
+        ));
     }
 
     pub fn deinit(self: *LockSurface) void {
         c.ext_session_lock_surface_v1_destroy(self.surface);
     }
 };
+
+const lockSurfaceListener = c.ext_session_lock_surface_v1_listener{
+    .configure = lockSurfaceConfigure,
+};
+
+fn lockSurfaceConfigure(
+    data: ?*anyopaque,
+    surface: ?*c.ext_session_lock_surface_v1,
+    serial: u32,
+    width: u32,
+    height: u32,
+) callconv(.c) void {
+    _ = width;
+    _ = height;
+    const self = @as(*LockSurface, @ptrCast(@alignCast(data.?)));
+    c.ext_session_lock_surface_v1_ack_configure(surface, serial);
+    self.configured = true;
+    std.log.debug("Lock surface configured", .{});
+}
