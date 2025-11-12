@@ -37,7 +37,6 @@ const Screen = struct {
     }
 
     pub fn draw(self: *Screen, time: f32) !void {
-        std.log.debug("Time: {}", .{time});
         const commandBuffer = try self.context.beginDraw();
         const width: u32 = @intCast(self.wlOutput.width);
         const height: u32 = @intCast(self.wlOutput.height);
@@ -58,7 +57,6 @@ const Screen = struct {
 
 fn key_handler(key: c_uint) void {
     if (key == 28) {
-        std.log.debug("Authenticating with password \"{s}\"", .{password});
         if (pam.authenticate(globalAllocator.?, password[0..])) {
             std.log.debug("Success", .{});
             authenticated = true;

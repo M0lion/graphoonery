@@ -176,7 +176,6 @@ fn keyboardKeyListener(
 
     // Only process key presses for compose
     if (!pressed) {
-        std.log.debug("Key released", .{});
         return;
     }
 
@@ -198,7 +197,6 @@ fn keyboardKeyListener(
 
                 switch (status) {
                     c.XKB_COMPOSE_COMPOSING => {
-                        std.log.debug("Dead key pressed, waiting for next key...", .{});
                         return;
                     },
                     c.XKB_COMPOSE_COMPOSED => {
@@ -211,7 +209,6 @@ fn keyboardKeyListener(
 
                         if (len > 0) {
                             const utf8_char = buf[0..@intCast(len - 1)]; // -1 to exclude null terminator
-                            std.log.debug("Composed character: {s}", .{utf8_char});
                             if (seat.keyStringHandler) |keyStringHandler| {
                                 keyStringHandler(utf8_char);
                             }
@@ -247,13 +244,6 @@ fn keyboardKeyListener(
             if (seat.keyStringHandler) |keyStringHandler| {
                 keyStringHandler(utf8_char);
             }
-            std.log.debug("Key: {s} ('{s} - {}')", .{
-                std.mem.sliceTo(&name_buf, 0),
-                utf8_char,
-                xkb_keycode,
-            });
-        } else {
-            std.log.debug("Key: {s}", .{std.mem.sliceTo(&name_buf, 0)});
         }
     }
 }
