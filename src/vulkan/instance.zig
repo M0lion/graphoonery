@@ -42,7 +42,7 @@ pub fn createInstance(info: ApplicationInfo) !c.VkInstance {
         [_][*:0]const u8{
             c.VK_KHR_SURFACE_EXTENSION_NAME,
             c.VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-            c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+                //c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
         };
 
     const layers = [_][*:0]const u8{

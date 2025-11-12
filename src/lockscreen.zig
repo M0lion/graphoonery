@@ -31,9 +31,15 @@ const Screen = struct {
     }
 
     pub fn deinit(self: *Screen) !void {
+        try self.context.waitDeviceIdle();
+        std.log.debug("Freeing mesh", .{});
         self.mesh.deinit();
+        std.log.debug("Freeing transform", .{});
         try self.transform.deinit();
-        self.context.deinit();
+        std.log.debug("Freeing pipeline", .{});
+        self.pipe.deinit();
+        std.log.debug("Freeing context", .{});
+        try self.context.deinit();
     }
 
     pub fn draw(self: *Screen, time: f32) !void {

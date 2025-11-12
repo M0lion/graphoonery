@@ -85,7 +85,9 @@ pub fn main() !void {
         .macos => surfaceData = window.windowHandle,
     }
     var vulkanContext = try VulkanContext.init(surfaceData, width, height, allocator);
-    defer vulkanContext.deinit();
+    defer vulkanContext.deinit() catch {
+        @panic("Failed to clean up vulkan context");
+    };
 
     const logicalDevice = vulkanContext.logicalDevice;
     std.log.debug("Loading shaders", .{});
@@ -101,10 +103,12 @@ pub fn main() !void {
     var transform = try ColoredVertexPipeline.TransformUBO.init(&coloredVertexPipeline);
     defer transform.deinit() catch |err| {
         std.log.err("Failed to free transform: {}", .{err});
+        @panic("Failed to free transform");
     };
     var dodecTransform = try ColoredVertexPipeline.TransformUBO.init(&coloredVertexPipeline);
     defer dodecTransform.deinit() catch |err| {
         std.log.err("Failed to free dodecTransform: {}", .{err});
+        @panic("Failed to free dodecTransform");
     };
 
     // Flush all Wayland requests before rendering

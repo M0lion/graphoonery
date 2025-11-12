@@ -2,6 +2,19 @@ const std = @import("std");
 const builtin = @import("builtin");
 const vk = @import("vk.zig");
 const c = vk.c;
+const sync = @import("sync.zig");
+const iv = @import("imageView.zig");
+
+pub const SwapchainImage = struct {
+    image: c.VkImage,
+    signalSemaphore: c.VkSemaphore,
+    imageView: c.VkImageView,
+
+    pub fn deinit(self: *SwapchainImage, logicalDevice: c.VkDevice) void {
+        c.vkDestroySemaphore(logicalDevice, self.signalSemaphore, null);
+        c.vkDestroyImageView(logicalDevice, self.imageView, null);
+    }
+};
 
 pub fn getSurfaceFormat(
     allocator: std.mem.Allocator,
@@ -178,12 +191,22 @@ pub fn getSwapchainImages(
     allocator: std.mem.Allocator,
     logicalDevice: c.VkDevice,
     swapchain: c.VkSwapchainKHR,
-) ![]c.VkImage {
+    format: c.VkFormat,
+) ![]SwapchainImage {
     var imageCount: u32 = 0;
     try vk.checkResult(c.vkGetSwapchainImagesKHR(logicalDevice, swapchain, &imageCount, null));
 
     const images = try allocator.alloc(c.VkImage, imageCount);
     try vk.checkResult(c.vkGetSwapchainImagesKHR(logicalDevice, swapchain, &imageCount, images.ptr));
 
-    return images;
+    const swapChainImages = try allocator.alloc(SwapchainImage, imageCount);
+    for (images, 0..) |image, i| {
+        swapChainImages[i] = SwapchainImage{
+            .image = image,
+            .signalSemaphore = try sync.createSemaphore(logicalDevice),
+            .imageView = try iv.createImageView(logicalDevice, image, format),
+        };
+    }
+
+    return swapChainImages;
 }

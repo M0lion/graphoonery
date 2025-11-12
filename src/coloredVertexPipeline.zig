@@ -181,8 +181,8 @@ pub const ColoredVertexPipeline = struct {
 
         pub fn deinit(self: *const Mesh) void {
             const logicalDevice = self.pipeline.context.logicalDevice;
-            buffer.freeMemory(logicalDevice, self.memory);
             buffer.destroyBuffer(logicalDevice, self.buffer);
+            buffer.freeMemory(logicalDevice, self.memory);
         }
     };
 

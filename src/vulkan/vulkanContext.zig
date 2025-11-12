@@ -44,7 +44,7 @@ pub const VulkanContext = struct {
     height: u32,
     surfaceFormat: c.VkSurfaceFormatKHR,
     renderPass: c.VkRenderPass,
-    swapchainImageViews: []c.VkImageView,
+    swapchainImages: []sc.SwapchainImage,
     framebuffers: []c.VkFramebuffer,
     syncObjects: sync.SyncObjects,
     commandPool: c.VkCommandPool,
@@ -113,12 +113,10 @@ pub const VulkanContext = struct {
         });
 
         std.log.debug("Creating image views", .{});
-        const swapchainImages = try sc.getSwapchainImages(allocator, logicalDevice, swapchain);
-        defer allocator.free(swapchainImages);
-        const swapchainImageViews = try iv.createImageViews(
+        const swapchainImages = try sc.getSwapchainImages(
             allocator,
             logicalDevice,
-            swapchainImages,
+            swapchain,
             surfaceFormat.format,
         );
 
@@ -135,7 +133,7 @@ pub const VulkanContext = struct {
         const framebuffers = try fb.createFramebuffers(
             allocator,
             logicalDevice,
-            swapchainImageViews,
+            swapchainImages,
             depthImageViews,
             renderPass,
             width,
@@ -171,7 +169,7 @@ pub const VulkanContext = struct {
             .height = height,
             .surfaceFormat = surfaceFormat,
             .renderPass = renderPass,
-            .swapchainImageViews = swapchainImageViews,
+            .swapchainImages = swapchainImages,
             .framebuffers = framebuffers,
             .syncObjects = syncObjects,
             .commandPool = commandPool,
@@ -267,6 +265,8 @@ pub const VulkanContext = struct {
     pub fn endDraw(self: *VulkanContext) !void {
         c.vkCmdEndRenderPass(self.commandBuffer);
 
+        const imageIndex = self.imageIndex orelse return error.NoImageIndex;
+
         try vk.checkResult(c.vkEndCommandBuffer(self.commandBuffer));
 
         const waitSemaphores = [_]c.VkSemaphore{
@@ -276,7 +276,7 @@ pub const VulkanContext = struct {
             c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         };
         const signalSemaphores = [_]c.VkSemaphore{
-            self.syncObjects.renderFinishedSemaphore,
+            self.swapchainImages[imageIndex].signalSemaphore,
         };
 
         var submitInfo = c.VkSubmitInfo{
@@ -298,13 +298,9 @@ pub const VulkanContext = struct {
             self.syncObjects.inFlightFence,
         ));
 
-        // Wait for queue to finish (debugging)
-        //try vk.checkResult(c.vkQueueWaitIdle(queue));
-
         // 5. Present the image
         const swapchains = [_]c.VkSwapchainKHR{self.swapchain};
 
-        const imageIndex = self.imageIndex.?;
         var presentInfo = c.VkPresentInfoKHR{
             .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .pNext = null,
@@ -336,16 +332,10 @@ pub const VulkanContext = struct {
             .allocator = self.allocator,
         });
 
-        const swapchainImages = try sc.getSwapchainImages(
+        self.swapchainImages = try sc.getSwapchainImages(
             self.allocator,
             self.logicalDevice,
             self.swapchain,
-        );
-        defer self.allocator.free(swapchainImages);
-        self.swapchainImageViews = try iv.createImageViews(
-            self.allocator,
-            self.logicalDevice,
-            swapchainImages,
             self.surfaceFormat.format,
         );
 
@@ -355,7 +345,7 @@ pub const VulkanContext = struct {
             self.physicalDevice,
             width,
             height,
-            swapchainImages.len,
+            self.swapchainImages.len,
         );
         var depthImageViews = try self.allocator.alloc(
             c.VkImageView,
@@ -368,7 +358,7 @@ pub const VulkanContext = struct {
         self.framebuffers = try fb.createFramebuffers(
             self.allocator,
             self.logicalDevice,
-            self.swapchainImageViews,
+            self.swapchainImages,
             depthImageViews,
             self.renderPass,
             width,
@@ -377,27 +367,31 @@ pub const VulkanContext = struct {
     }
 
     fn cleanupSwapchain(self: *VulkanContext) void {
+        std.log.debug("Cleaning up swapchain", .{});
         img.freeImages(self.logicalDevice, self.depthImageResults);
 
         for (self.framebuffers) |framebuffer| {
             c.vkDestroyFramebuffer(self.logicalDevice, framebuffer, null);
         }
 
-        for (self.swapchainImageViews) |imageView| {
-            c.vkDestroyImageView(self.logicalDevice, imageView, null);
+        for (self.swapchainImages) |*imageView| {
+            imageView.deinit(self.logicalDevice);
         }
+        self.allocator.free(self.swapchainImages);
 
         c.vkDestroySwapchainKHR(self.logicalDevice, self.swapchain, null);
+        std.log.debug("Cleaned up swapchain", .{});
     }
 
-    pub fn deinit(self: *VulkanContext) void {
+    pub fn waitDeviceIdle(self: *VulkanContext) !void {
+        try vk.checkResult(c.vkDeviceWaitIdle(self.logicalDevice));
+    }
+
+    pub fn deinit(self: *VulkanContext) !void {
+        try vk.checkResult(c.vkDeviceWaitIdle(self.logicalDevice));
         sync.destroySemaphore(
             self.logicalDevice,
             self.syncObjects.imageAvailableSemaphore,
-        );
-        sync.destroySemaphore(
-            self.logicalDevice,
-            self.syncObjects.renderFinishedSemaphore,
         );
         sync.destroyFence(
             self.logicalDevice,

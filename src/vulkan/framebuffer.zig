@@ -1,11 +1,12 @@
 const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
+const sc = @import("swapchain.zig");
 
 pub fn createFramebuffers(
     allocator: std.mem.Allocator,
     logicalDevice: c.VkDevice,
-    imageViews: []c.VkImageView,
+    imageViews: []sc.SwapchainImage,
     depthImageViews: []c.VkImageView,
     renderPass: c.VkRenderPass,
     width: u32,
@@ -15,7 +16,7 @@ pub fn createFramebuffers(
 
     for (imageViews, 0..) |view, i| {
         const attachments = [_]c.VkImageView{
-            view,
+            view.imageView,
             depthImageViews[i],
         };
 
