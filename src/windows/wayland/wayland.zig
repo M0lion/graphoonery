@@ -8,7 +8,7 @@ const Surface = @import("surface.zig").Surface;
 const st = @import("seat.zig");
 
 pub const WaylandWindow = struct {
-    connection: WaylandConnection = undefined,
+    connection: WaylandConnection = .{},
 
     surface: Surface = undefined,
     xdgSurface: xdg.Surface = undefined,
@@ -26,7 +26,7 @@ pub const WaylandWindow = struct {
     }
 
     pub fn initConnection(self: *WaylandWindow, allocator: std.mem.Allocator) !void {
-        try self.connection.init(allocator);
+        try self.connection.init(allocator, null);
 
         if (self.connection.compositor == null) return error.NoCompositor;
         if (self.connection.xdgWmBase == null) return error.NoXdgWmBase;

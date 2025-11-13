@@ -10,6 +10,18 @@ pub const Output = struct {
     done: bool = false,
 };
 
+const OutputAddedListener = *const fn (
+    connection: *WaylandConnection,
+    output: *Output,
+    name: u32,
+) void;
+const OutputRemovedListener = *const fn (name: u32) void;
+
+pub const ConnectionListeners = struct {
+    outputAddedListener: ?OutputAddedListener = null,
+    outputRemovedListener: ?OutputRemovedListener = null,
+};
+
 pub const WaylandConnection = struct {
     allocator: std.mem.Allocator = undefined,
 
@@ -22,8 +34,19 @@ pub const WaylandConnection = struct {
     seat: ?*c.wl_seat = null,
 
     outputs: std.ArrayList(*Output) = undefined,
+    outputAddedListener: ?OutputAddedListener = null,
+    outputRemovedListener: ?OutputRemovedListener = null,
 
-    pub fn init(self: *WaylandConnection, allocator: std.mem.Allocator) !void {
+    pub fn init(
+        self: *WaylandConnection,
+        allocator: std.mem.Allocator,
+        listeners: ?ConnectionListeners,
+    ) !void {
+        if (listeners) |l| {
+            self.outputAddedListener = l.outputAddedListener;
+            self.outputRemovedListener = l.outputRemovedListener;
+        }
+
         self.allocator = allocator;
         self.outputs = try std.ArrayList(*Output).initCapacity(allocator, 1);
 
@@ -41,13 +64,11 @@ pub const WaylandConnection = struct {
     }
 
     pub fn roundtrip(self: *WaylandConnection) !void {
-        std.log.debug("Starting roundtrip", .{});
         const result = c.wl_display_roundtrip(self.display);
         if (result < 0) {
             std.log.err("Wayland roundtrip error: {}", .{result});
             return error.Roundtrip;
         }
-        std.log.debug("Roundtrip {}", .{result});
     }
 
     pub fn dispatch(self: *WaylandConnection) !void {
@@ -73,6 +94,7 @@ pub const WaylandConnection = struct {
 
 const registryListener = c.wl_registry_listener{
     .global = registryGlobal,
+    .global_remove = registryGlobalRemove,
 };
 
 fn registryGlobal(
@@ -120,6 +142,7 @@ fn registryGlobal(
             std.log.err("Failed to append output {}", .{err});
             @panic("Output fail");
         };
+        std.log.debug("Output {} added", .{name});
         w.checkResult(c.wl_output_add_listener(
             output,
             &outputListener,
@@ -128,6 +151,23 @@ fn registryGlobal(
             std.log.err("Add output listener error: {}", .{err});
             @panic("Failed to add output listener");
         };
+        if (connection.outputAddedListener) |outputAdded| {
+            outputAdded(connection, newOutput, name);
+        }
+    }
+}
+
+fn registryGlobalRemove(data: ?*anyopaque, _: ?*c.wl_registry, name: u32) callconv(.c) void {
+    const connection: *WaylandConnection = @ptrCast(@alignCast(data));
+    for (connection.outputs.items, 0..) |output, i| {
+        if (output.name == name) {
+            if (connection.outputRemovedListener) |removed| {
+                removed(name);
+            }
+            _ = connection.outputs.orderedRemove(i);
+            std.log.debug("Output {} removed", .{name});
+            return;
+        }
     }
 }
 
