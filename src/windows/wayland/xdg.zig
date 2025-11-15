@@ -85,6 +85,7 @@ fn xdgTopeLevelCapabilities(
 }
 
 fn xdgToplevelClose(data: ?*anyopaque, _: ?*c.xdg_toplevel) callconv(.c) void {
+    std.log.debug("xdgToplevelClose", .{});
     var surface: *Surface = @ptrCast(@alignCast(data));
     surface.shouldClose = true;
 }
