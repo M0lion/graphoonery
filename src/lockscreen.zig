@@ -150,7 +150,7 @@ fn key_string_handler(char: []u8) void {
     }
 }
 
-pub fn startLockscreen() !void {
+pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
     globalAllocator = allocator;

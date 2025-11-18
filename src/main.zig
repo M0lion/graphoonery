@@ -54,14 +54,6 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     globalAllocator = allocator;
 
-    if (platform == .linux) {
-        const envMap = try std.process.getEnvMap(allocator);
-        if (envMap.get("LOCK") != null) {
-            try lock.startLockscreen();
-            return;
-        }
-    }
-
     std.log.debug("Window init", .{});
     var window = try windows.Window.init();
     try window.finishInit(allocator);
