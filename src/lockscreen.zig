@@ -1,5 +1,5 @@
 const std = @import("std");
-const lock = @import("windows/wayland/lockscreen.zig");
+const lock = @import("windows/wayland/sessionLock.zig");
 const wl = @import("windows/wayland/waylandConnection.zig");
 const pam = @import("pam.zig");
 const vkC = @import("vulkan/vulkanContext.zig");
@@ -8,6 +8,7 @@ const cube = @import("cube.zig");
 const vk = @import("vulkan/vk.zig");
 const math = @import("math/index.zig");
 const sf = @import("windows/wayland/surface.zig");
+const w = @import("windows/wayland/wayland_c.zig");
 
 var password = std.mem.zeroes([50]u8);
 var passwordCharCount: usize = 0;
@@ -125,6 +126,7 @@ const Screen = struct {
         var p = math.Mat4.createPerspective(90, aspect, 0.01, 10);
         try self.transform.update(&t, &p);
         try self.pipe.draw(commandBuffer, &self.transform, &self.mesh);
+
         try self.context.endDraw();
     }
 };

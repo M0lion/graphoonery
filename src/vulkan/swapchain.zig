@@ -87,7 +87,7 @@ pub fn getPresentMode(
     // Choose present mode - prefer FIFO (vsync) for Wayland compatibility, fallback to first available
     var chosenPresentMode = presentModes[0];
     for (presentModes) |mode| {
-        if (mode == c.VK_PRESENT_MODE_FIFO_KHR) {
+        if (mode == c.VK_PRESENT_MODE_IMMEDIATE_KHR) {
             chosenPresentMode = mode;
             break;
         }

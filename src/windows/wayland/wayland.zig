@@ -11,7 +11,7 @@ pub const WaylandWindow = struct {
     connection: WaylandConnection = .{},
 
     surface: Surface = undefined,
-    xdgSurface: xdg.Surface = undefined,
+    xdgSurface: xdg.Surface = xdg.Surface{},
     seat: st.Seat = undefined,
 
     should_close: bool = false,
