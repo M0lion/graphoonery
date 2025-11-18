@@ -23,6 +23,7 @@ const dodec = @import("dodecahedron.zig");
 const pam = @import("pam.zig");
 const platform = @import("platform.zig").platform;
 const lock = @import("lockscreen.zig");
+const spirv = @import("vulkan/spirv/spirv.zig");
 
 var password = std.mem.zeroes([50]u8);
 var passwordCharCount: usize = 0;
@@ -49,10 +50,20 @@ fn key_string_handler(char: []u8) void {
     }
 }
 
+const vertex = spirv.parseSpriv(shaders.vertex_vert_spv);
+
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
     globalAllocator = allocator;
+
+    for (vertex) |variable| {
+        std.log.info("Name: {} {s} - {any}", .{
+            variable.id,
+            variable.name orelse "NO NAME",
+            variable.type,
+        });
+    }
 
     std.log.debug("Window init", .{});
     var window = try windows.Window.init();
