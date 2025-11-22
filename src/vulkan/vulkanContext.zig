@@ -10,7 +10,6 @@ const s = @import("surface.zig");
 const pDevice = @import("physicalDevice.zig");
 const lDevice = @import("logicalDevice.zig");
 const sc = @import("swapchain.zig");
-const wayland_c = if (builtin.os.tag != .macos) @import("../windows/wayland/wayland_c.zig") else struct {};
 const fb = @import("framebuffer.zig");
 const iv = @import("imageView.zig");
 const rp = @import("renderPass.zig");
@@ -25,8 +24,8 @@ pub const VulkanContextError = error{
 pub const VulkanContext = struct {
     pub const SurfaceData = switch (platform) {
         .linux => struct {
-            display: ?*wayland_c.c.wl_display,
-            surface: ?*wayland_c.c.wl_surface,
+            display: ?*c.struct_wl_display_1,
+            surface: ?*c.struct_wl_surface_2,
         },
         .macos => *anyopaque,
     };

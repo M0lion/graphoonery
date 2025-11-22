@@ -10,7 +10,7 @@ const command = @import("vulkan/command.zig");
 const sync = @import("vulkan/sync.zig");
 const buffer = @import("vulkan/buffer.zig");
 const descriptor = @import("vulkan/descriptor.zig");
-const wayland_c = if (builtin.os.tag != .macos) @import("windows/wayland/wayland_c.zig") else struct {
+const wayland_c = if (builtin.os.tag != .macos) @import("wayland").c else struct {
     const c = struct {};
 };
 const math = @import("math/index.zig");
@@ -71,8 +71,8 @@ pub fn main() !void {
     var surfaceData: VulkanContext.SurfaceData = undefined;
     switch (platform) {
         .linux => surfaceData = .{
-            .display = window.windowHandle.connection.display,
-            .surface = window.windowHandle.surface.surface,
+            .display = @ptrCast(window.windowHandle.connection.display),
+            .surface = @ptrCast(window.windowHandle.surface.surface),
         },
         .macos => surfaceData = window.windowHandle,
     }

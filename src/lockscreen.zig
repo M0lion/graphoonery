@@ -1,14 +1,15 @@
 const std = @import("std");
-const lock = @import("windows/wayland/sessionLock.zig");
-const wl = @import("windows/wayland/waylandConnection.zig");
+const wayland = @import("wayland");
+const lock = wayland.sessionLock;
+const wl = wayland.connection;
 const pam = @import("pam.zig");
 const vkC = @import("vulkan/vulkanContext.zig");
 const ColoredVertexPipeline = @import("coloredVertexPipeline.zig").ColoredVertexPipeline;
 const cube = @import("cube.zig");
 const vk = @import("vulkan/vk.zig");
 const math = @import("math/index.zig");
-const sf = @import("windows/wayland/surface.zig");
-const w = @import("windows/wayland/wayland_c.zig");
+const sf = wayland.surface;
+const w = wayland.c;
 
 var password = std.mem.zeroes([50]u8);
 var passwordCharCount: usize = 0;
@@ -84,8 +85,8 @@ const Screen = struct {
 
         self.context = try vkC.VulkanContext.init(
             .{
-                .display = connection.display,
-                .surface = self.surface.surface,
+                .display = @ptrCast(connection.display),
+                .surface = @ptrCast(self.surface.surface),
             },
             @intCast(self.wlOutput.width),
             @intCast(self.wlOutput.height),

@@ -2,7 +2,6 @@ const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
 const macos = @import("../windows/macos.zig");
-const wayland = @import("../windows/wayland/wayland_c.zig");
 
 pub const CreateMetalSurfaceArgs = struct {
     windowHandle: *anyopaque,
@@ -25,8 +24,8 @@ pub fn createMetalSurface(
 }
 
 pub const CreateWaylandSurfaceArgs = struct {
-    display: ?*wayland.c.wl_display,
-    surface: ?*wayland.c.wl_surface,
+    display: ?*c.struct_wl_display_1,
+    surface: ?*c.struct_wl_surface_2,
 };
 
 pub fn createWaylandSurface(
