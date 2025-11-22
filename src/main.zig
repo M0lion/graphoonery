@@ -1,15 +1,16 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const vk = @import("vulkan/vk.zig");
+const vulkan = @import("vulkan");
+const vk = vulkan.vk;
 const c = vk.c;
 const windows = @import("windows/window.zig");
-const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
-const sc = @import("vulkan/swapchain.zig");
-const pipeline = @import("vulkan/pipeline.zig");
-const command = @import("vulkan/command.zig");
-const sync = @import("vulkan/sync.zig");
-const buffer = @import("vulkan/buffer.zig");
-const descriptor = @import("vulkan/descriptor.zig");
+const VulkanContext = vulkan.context.VulkanContext;
+const sc = vulkan.swapchain;
+const pipeline = vulkan.pipeline;
+const command = vulkan.command;
+const sync = vulkan.sync;
+const buffer = vulkan.buffer;
+const descriptor = vulkan.descriptor;
 const wayland_c = if (builtin.os.tag != .macos) @import("wayland").c else struct {
     const c = struct {};
 };
@@ -24,28 +25,12 @@ const pam = @import("pam.zig");
 const platform = @import("platform.zig").platform;
 const lock = @import("lockscreen.zig");
 
-var password = std.mem.zeroes([50]u8);
-var passwordCharCount: usize = 0;
 var globalAllocator: ?std.mem.Allocator = undefined;
+var shouldClose = false;
 
 fn key_handler(key: c_uint) void {
-    if (key == 28) {
-        std.log.debug("Authenticating with password \"{s}\"", .{password});
-        if (pam.authenticate(globalAllocator.?, password[0..])) {
-            std.log.debug("Success", .{});
-        } else {
-            std.log.debug("Fail", .{});
-        }
-        @memset(password[0..], 0);
-        passwordCharCount = 0;
-    }
-}
-
-fn key_string_handler(char: []u8) void {
-    for (char) |ch| {
-        if (ch == 13) return;
-        password[passwordCharCount] = ch;
-        passwordCharCount += 1;
+    if (key == 1) {
+        shouldClose = true;
     }
 }
 
@@ -61,7 +46,6 @@ pub fn main() !void {
     defer window.deinit();
 
     if (platform == .linux) {
-        window.windowHandle.seat.keyStringHandler = key_string_handler;
         window.windowHandle.seat.keyHandler = key_handler;
     }
 
@@ -123,7 +107,7 @@ pub fn main() !void {
     std.log.debug("Main loop", .{});
     // Event loop
     var time: f32 = 0.0;
-    while (try window.pollEvents()) {
+    while (try window.pollEvents() and !shouldClose) {
         width, height = window.getWindowSize();
         t = math.Mat4.createRotation(time * 10, time * 6, time * 30);
         t = math.Mat4.createTranslation(0, 0, -5).multiply(&t);

@@ -1,10 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const Window = @import("../windows/window.zig").Window;
 const vk = @import("vk.zig");
 const c = vk.c;
-const platform = @import("../platform.zig").platform;
-const macos = @import("../windows/macos.zig");
 const createInstance = @import("instance.zig").createInstance;
 const s = @import("surface.zig");
 const pDevice = @import("physicalDevice.zig");
@@ -22,12 +19,13 @@ pub const VulkanContextError = error{
 };
 
 pub const VulkanContext = struct {
-    pub const SurfaceData = switch (platform) {
+    pub const SurfaceData = switch (builtin.os.tag) {
         .linux => struct {
             display: ?*c.struct_wl_display_1,
             surface: ?*c.struct_wl_surface_2,
         },
         .macos => *anyopaque,
+        else => @compileError("Unsupported platform"),
     };
 
     allocator: std.mem.Allocator,
@@ -57,7 +55,7 @@ pub const VulkanContext = struct {
         });
 
         var surface: c.VkSurfaceKHR = null;
-        switch (comptime platform) {
+        switch (comptime builtin.os.tag) {
             .macos => {
                 surface = try s.createMetalSurface(instance, .{ .windowHandle = surfaceData });
             },
@@ -67,6 +65,7 @@ pub const VulkanContext = struct {
                     .surface = surfaceData.surface,
                 });
             },
+            else => @compileError("Unsupported os"),
         }
 
         const physicalDeviceResult = try pDevice.pickPhysicalDevice(

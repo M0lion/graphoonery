@@ -1,23 +1,17 @@
 const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
-const macos = @import("../windows/macos.zig");
-
-pub const CreateMetalSurfaceArgs = struct {
-    windowHandle: *anyopaque,
-};
 
 pub fn createMetalSurface(
     instance: c.VkInstance,
-    args: CreateMetalSurfaceArgs,
+    metalLayer: *anyopaque,
 ) !c.VkSurfaceKHR {
     var surface: c.VkSurfaceKHR = null;
-    const metal_layer = macos.getMetalLayer(args.windowHandle);
     const surface_create_info = c.VkMetalSurfaceCreateInfoEXT{
         .sType = c.VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
         .pNext = null,
         .flags = 0,
-        .pLayer = metal_layer,
+        .pLayer = metalLayer,
     };
     try vk.checkResult(c.vkCreateMetalSurfaceEXT(instance, &surface_create_info, null, &surface));
     return surface;

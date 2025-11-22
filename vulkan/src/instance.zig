@@ -1,7 +1,7 @@
 const std = @import("std");
-const platform = @import("../platform.zig").platform;
 const vk = @import("vk.zig");
 const c = vk.c;
+const builtin = @import("builtin");
 
 pub const ApplicationInfo = struct {
     name: [*c]const u8,
@@ -32,18 +32,19 @@ pub fn createInstance(info: ApplicationInfo) !c.VkInstance {
     });
 
     // Simpler extension list for older MoltenVK
-    const extensions = if (platform == .macos)
-        [_][*:0]const u8{
+    const extensions = switch (builtin.os.tag) {
+        .macos => [_][*:0]const u8{
             c.VK_KHR_SURFACE_EXTENSION_NAME,
             c.VK_EXT_METAL_SURFACE_EXTENSION_NAME,
             c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-        }
-    else
-        [_][*:0]const u8{
+        },
+        .linux => [_][*:0]const u8{
             c.VK_KHR_SURFACE_EXTENSION_NAME,
             c.VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
                 //c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-        };
+        },
+        else => @compileError("Unsupported os"),
+    };
 
     const layers = [_][*:0]const u8{
         "VK_LAYER_KHRONOS_validation",

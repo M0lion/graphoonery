@@ -1,10 +1,11 @@
-const vk = @import("vulkan/vk.zig");
+const vulkan = @import("vulkan");
+const vk = vulkan.vk;
 const c = vk.c;
-const pipe = @import("vulkan/pipeline.zig");
-const VulkanContext = @import("vulkan/vulkanContext.zig").VulkanContext;
+const pipe = vulkan.pipeline;
+const VulkanContext = vulkan.context.VulkanContext;
 const shaders = @import("shaders");
-const descriptor = @import("vulkan/descriptor.zig");
-const buffer = @import("vulkan/buffer.zig");
+const descriptor = vulkan.descriptor;
+const buffer = vulkan.buffer;
 const Mat4 = @import("math/mat4.zig").Mat4;
 
 pub const ColoredVertexPipeline = struct {

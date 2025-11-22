@@ -1,8 +1,14 @@
 const std = @import("std");
 
-pub fn createModule(b: *std.Build) *std.Build.Module {
+pub fn createModule(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Module {
     const module = b.createModule(.{
         .root_source_file = b.path("wayland/src/lib.zig"),
+        .target = target,
+        .optimize = optimize,
     });
 
     const protocols = generateWaylandProtocols(b);
@@ -11,6 +17,18 @@ pub fn createModule(b: *std.Build) *std.Build.Module {
     module.addIncludePath(protocols.xdg_shell_header_dir);
     module.addCSourceFile(.{ .file = protocols.session_lock_code });
     module.addIncludePath(protocols.session_lock_header_dir);
+    module.linkSystemLibrary("wayland-client", .{
+        .needed = true,
+        .preferred_link_mode = .static,
+    });
+    module.linkSystemLibrary("xkbcommon", .{
+        .needed = true,
+        .preferred_link_mode = .static,
+    });
+    //module.linkSystemLibrary("wayland-egl", .{
+    //    .needed = true,
+    //    .preferred_link_mode = .static,
+    //});
 
     return module;
 }
