@@ -1,6 +1,8 @@
 const std = @import("std");
 const vulkan = @import("vulkan/build.zig");
 const wayland = @import("wayland/build.zig");
+const window = @import("window/build.zig");
+const testbed = @import("testbed/build.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -19,6 +21,19 @@ pub fn build(b: *std.Build) void {
         .name = "wayland",
         .module = wayland.createModule(b, target, optimize),
     };
+    const windowImport = std.Build.Module.Import{
+        .name = "window",
+        .module = window.createModule(b, target, optimize, vulkanImport),
+    };
+
+    const testbedModule = testbed.createModule(
+        b,
+        target,
+        optimize,
+        vulkanImport,
+        windowImport,
+    );
+    addExe(b, testbedModule, "testbed");
 
     // Executable 1
     const mainModule = b.createModule(.{
@@ -66,6 +81,22 @@ pub fn build(b: *std.Build) void {
     lockCmd.step.dependOn(b.getInstallStep());
     const lockStep = b.step("lock", "Run the lockscreen");
     lockStep.dependOn(&lockCmd.step);
+}
+
+fn addExe(
+    b: *std.Build,
+    module: *std.Build.Module,
+    name: []const u8,
+) void {
+    const exe = b.addExecutable(.{
+        .name = name,
+        .root_module = module,
+    });
+    b.installArtifact(exe);
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+    const run_step = b.step(name, b.fmt("Run {s}", .{name}));
+    run_step.dependOn(&run_cmd.step);
 }
 
 fn configureExecutable(
