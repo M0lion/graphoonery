@@ -49,6 +49,11 @@ pub fn build(b: *std.Build) void {
         .name = "graphoonery",
         .root_module = mainModule,
     });
+
+    // Linker fix
+    mainExe.use_llvm = true;
+    mainExe.use_lld = true;
+
     configureExecutable(b, mainExe, mainModule, target, shaders_module);
     b.installArtifact(mainExe);
 
@@ -66,6 +71,11 @@ pub fn build(b: *std.Build) void {
         .name = "lockfoonery",
         .root_module = lockscreenModule,
     });
+
+    // Linker fix
+    lockscreenExe.use_llvm = true;
+    lockscreenExe.use_lld = true;
+
     lockscreenExe.linkSystemLibrary("pam");
     configureExecutable(b, lockscreenExe, lockscreenModule, target, shaders_module);
     b.installArtifact(lockscreenExe);
@@ -92,6 +102,8 @@ fn addExe(
         .name = name,
         .root_module = module,
     });
+    exe.use_llvm = true;
+    exe.use_lld = true;
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
