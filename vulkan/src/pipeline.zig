@@ -2,6 +2,11 @@ const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
 
+pub const Topology = enum(c_uint) {
+    TriangleList = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+    TriangleStrip = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+};
+
 pub const PipelineConfig = struct {
     logicalDevice: c.VkDevice,
     vertShaderModule: c.VkShaderModule,
@@ -9,9 +14,11 @@ pub const PipelineConfig = struct {
     width: u32,
     height: u32,
     renderPass: c.VkRenderPass,
-    descriptorSetLayout: c.VkDescriptorSetLayout,
-    vertexBindingDescriptions: []c.VkVertexInputBindingDescription,
-    vertexAttributeDescriptions: []c.VkVertexInputAttributeDescription,
+    descriptorSetLayouts: ?[]const c.VkDescriptorSetLayout = null,
+    vertexBindingDescriptions: ?[]const c.VkVertexInputBindingDescription = null,
+    vertexAttributeDescriptions: ?[]const c.VkVertexInputAttributeDescription = null,
+    pushConstantRanges: ?[]const c.VkPushConstantRange = null,
+    topology: Topology,
 };
 
 pub const PipelineResult = struct {
@@ -42,21 +49,24 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
 
     const shaderStages = [_]c.VkPipelineShaderStageCreateInfo{ vertShaderStageInfo, fragShaderStageInfo };
 
+    const vertexBindingDescriptions = config.vertexBindingDescriptions orelse &.{};
+    const vertexAttributeDescriptions = config.vertexAttributeDescriptions orelse &.{};
+
     var vertexInputInfo = c.VkPipelineVertexInputStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .vertexBindingDescriptionCount = @intCast(config.vertexBindingDescriptions.len),
-        .pVertexBindingDescriptions = config.vertexBindingDescriptions.ptr,
-        .vertexAttributeDescriptionCount = @intCast(config.vertexAttributeDescriptions.len),
-        .pVertexAttributeDescriptions = config.vertexAttributeDescriptions.ptr,
+        .vertexBindingDescriptionCount = @intCast(vertexBindingDescriptions.len),
+        .pVertexBindingDescriptions = vertexBindingDescriptions.ptr,
+        .vertexAttributeDescriptionCount = @intCast(vertexAttributeDescriptions.len),
+        .pVertexAttributeDescriptions = vertexAttributeDescriptions.ptr,
     };
 
     var inputAssembly = c.VkPipelineInputAssemblyStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .topology = @intFromEnum(config.topology),
         .primitiveRestartEnable = c.VK_FALSE,
     };
 
@@ -116,11 +126,11 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
     };
 
     var colorBlendAttachment = c.VkPipelineColorBlendAttachmentState{
-        .blendEnable = c.VK_FALSE,
+        .blendEnable = c.VK_TRUE,
         .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT |
             c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
-        .srcColorBlendFactor = c.VK_BLEND_FACTOR_ONE,
-        .dstColorBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+        .srcColorBlendFactor = c.VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = c.VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .colorBlendOp = c.VK_BLEND_OP_ADD,
         .srcAlphaBlendFactor = c.VK_BLEND_FACTOR_ONE,
         .dstAlphaBlendFactor = c.VK_BLEND_FACTOR_ZERO,
@@ -138,14 +148,16 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .blendConstants = [_]f32{ 0.0, 0.0, 0.0, 0.0 },
     };
 
+    const descriptorSetLayouts = config.descriptorSetLayouts orelse &.{};
+    const pushConstantRanges = config.pushConstantRanges orelse &.{};
     var pipelineLayoutInfo = c.VkPipelineLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .setLayoutCount = 1,
-        .pSetLayouts = &config.descriptorSetLayout,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = null,
+        .setLayoutCount = @intCast(descriptorSetLayouts.len),
+        .pSetLayouts = descriptorSetLayouts.ptr,
+        .pushConstantRangeCount = @intCast(pushConstantRanges.len),
+        .pPushConstantRanges = pushConstantRanges.ptr,
     };
 
     var pipelineLayout: c.VkPipelineLayout = undefined;

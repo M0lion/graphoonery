@@ -2,21 +2,35 @@ const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
 
-pub fn createDescriptorSetLayout(logicalDevice: c.VkDevice) !c.VkDescriptorSetLayout {
-    var uboLayoutBinding = c.VkDescriptorSetLayoutBinding{
-        .binding = 0,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
-        .pImmutableSamplers = null,
-    };
+pub const DescriptorType = enum(c_uint) {
+    UniformBuffer = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+};
+pub const ShaderStage = enum(u32) {
+    Vertex = c.VK_SHADER_STAGE_VERTEX_BIT,
+};
+pub const DescriptorSetLayoutBinding = struct {
+    descriptorType: DescriptorType,
+    shaderStage: ShaderStage,
+};
+
+pub fn createDescriptorSetLayout(allocator: std.mem.Allocator, logicalDevice: c.VkDevice, bindings: []const DescriptorSetLayoutBinding) !c.VkDescriptorSetLayout {
+    var uboLayoutBindings = try allocator.alloc(c.VkDescriptorSetLayoutBinding, bindings.len);
+    for (bindings, 0..) |binding, i| {
+        uboLayoutBindings[i] = c.VkDescriptorSetLayoutBinding{
+            .binding = @intCast(i),
+            .descriptorType = @intFromEnum(binding.descriptorType),
+            .descriptorCount = 1,
+            .stageFlags = @intFromEnum(binding.shaderStage),
+            .pImmutableSamplers = null,
+        };
+    }
 
     var layoutInfo = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .bindingCount = 1,
-        .pBindings = &uboLayoutBinding,
+        .bindingCount = @intCast(uboLayoutBindings.len),
+        .pBindings = uboLayoutBindings.ptr,
     };
 
     var descriptorSetLayout: c.VkDescriptorSetLayout = undefined;

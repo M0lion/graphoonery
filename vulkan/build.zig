@@ -29,6 +29,8 @@ pub fn compileShaders(
     const shaders = [_]struct { path: []const u8, name: []const u8 }{
         .{ .path = "shaders/vertex.vert", .name = "vertex_vert_spv" },
         .{ .path = "shaders/fragment.frag", .name = "fragment_frag_spv" },
+        .{ .path = "shaders/roundedCornerRect.vert", .name = "roundedCornerRect_vert_spv" },
+        .{ .path = "shaders/roundedCornerRect.frag", .name = "roundedCornerRect_frag_spv" },
     };
 
     const wf = b.addWriteFiles();

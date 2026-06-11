@@ -93,7 +93,7 @@ const Screen = struct {
             @intCast(self.wlOutput.height),
             allocator,
         );
-        self.pipe = try ColoredVertexPipeline.init(self.context);
+        self.pipe = try ColoredVertexPipeline.init(allocator, self.context);
 
         self.mesh = try cube.getCube(&self.pipe);
         self.transform = try ColoredVertexPipeline.TransformUBO.init(&self.pipe);

@@ -1,3 +1,4 @@
+const std = @import("std");
 const vulkan = @import("vulkan");
 const vk = vulkan.vk;
 const c = vk.c;
@@ -23,10 +24,17 @@ pub const ColoredVertexPipeline = struct {
     fragmentShaderModule: c.VkShaderModule,
     vertexShaderModule: c.VkShaderModule,
 
-    pub fn init(vulkanContext: VulkanContext) !ColoredVertexPipeline {
+    pub fn init(allocator: std.mem.Allocator, vulkanContext: VulkanContext) !ColoredVertexPipeline {
         const logicalDevice = vulkanContext.logicalDevice;
 
-        const descriptorSetLayout = try descriptor.createDescriptorSetLayout(logicalDevice);
+        const descriptorSetLayouts: [1]descriptor.DescriptorSetLayoutBinding = .{
+            descriptor.DescriptorSetLayoutBinding{
+                .descriptorType = descriptor.DescriptorType.UniformBuffer,
+                .shaderStage = descriptor.ShaderStage.Vertex,
+            },
+        };
+
+        const descriptorSetLayout = try descriptor.createDescriptorSetLayout(allocator, logicalDevice, &descriptorSetLayouts);
 
         const descriptorPool = try descriptor.createDescriptorPool(logicalDevice);
 
@@ -88,9 +96,10 @@ pub const ColoredVertexPipeline = struct {
             .width = vulkanContext.width,
             .height = vulkanContext.height,
             .renderPass = vulkanContext.renderPass,
-            .descriptorSetLayout = descriptorSetLayout,
+            .descriptorSetLayouts = &.{descriptorSetLayout},
             .vertexBindingDescriptions = &bindingDescriptions,
             .vertexAttributeDescriptions = &attributeDescriptions,
+            .topology = pipe.Topology.TriangleList,
         });
 
         return ColoredVertexPipeline{

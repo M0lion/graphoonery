@@ -1,9 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
+
+const shaders = @import("shaders");
+const vertShaderCode = shaders.vertex_vert_spv;
+const fragShaderCode = shaders.fragment_frag_spv;
 const vulkan = @import("vulkan");
 const vk = vulkan.vk;
 const c = vk.c;
-const windows = @import("windows/window.zig");
 const VulkanContext = vulkan.context.VulkanContext;
 const sc = vulkan.swapchain;
 const pipeline = vulkan.pipeline;
@@ -11,20 +14,20 @@ const command = vulkan.command;
 const sync = vulkan.sync;
 const buffer = vulkan.buffer;
 const descriptor = vulkan.descriptor;
-const wayland_c = if (builtin.os.tag != .macos) @import("wayland").c else struct {
-    const c = struct {};
-};
-const math = @import("math/index.zig");
-const shaders = @import("shaders");
-const vertShaderCode = shaders.vertex_vert_spv;
-const fragShaderCode = shaders.fragment_frag_spv;
+
 const ColoredVertexPipeline = @import("coloredVertexPipeline.zig").ColoredVertexPipeline;
 const cube = @import("cube.zig");
 const dodec = @import("dodecahedron.zig");
+const lock = @import("lockscreen.zig");
+const math = @import("math/index.zig");
 const pam = @import("pam.zig");
 const platform = @import("platform.zig").platform;
-const lock = @import("lockscreen.zig");
+const RoundedRectanglePipeline = @import("RoundedRectanglePipeline.zig").RoundedCornerPipeline;
+const windows = @import("windows/window.zig");
 
+const wayland_c = if (builtin.os.tag != .macos) @import("wayland").c else struct {
+    const c = struct {};
+};
 var globalAllocator: ?std.mem.Allocator = undefined;
 var shouldClose = false;
 
@@ -68,8 +71,10 @@ pub fn main() !void {
     const logicalDevice = vulkanContext.logicalDevice;
     std.log.debug("Loading shaders", .{});
 
-    var coloredVertexPipeline = try ColoredVertexPipeline.init(vulkanContext);
+    var coloredVertexPipeline = try ColoredVertexPipeline.init(allocator, vulkanContext);
     defer coloredVertexPipeline.deinit();
+    var roundedRectanglePipeline = try RoundedRectanglePipeline.init(vulkanContext);
+    defer roundedRectanglePipeline.deinit();
 
     const mesh = try cube.getCube(&coloredVertexPipeline);
     defer mesh.deinit();
@@ -135,6 +140,15 @@ pub fn main() !void {
             };
             try coloredVertexPipeline.draw(commandBuffer, &transform, &mesh);
             try coloredVertexPipeline.draw(commandBuffer, &dodecTransform, &dodecahedron);
+            try roundedRectanglePipeline.draw(commandBuffer, .{
+                .border = 5,
+                .border_color = .{ 1, 0, 0, 1 },
+                .center = .{ 200, 200 },
+                .fill = .{ 0, 1, 0, 1 },
+                .half_size = .{ 100, 50 },
+                .radius = 25,
+                .resolution = .{ @as(f32, @floatFromInt(width)), @as(f32, @floatFromInt(height)) },
+            });
         }
 
         time += 0.001;
