@@ -7,16 +7,17 @@ const shaders = @import("shaders");
 const descriptor = vulkan.descriptor;
 const buffer = vulkan.buffer;
 const Mat4 = @import("math/mat4.zig").Mat4;
+const math = @import("math/index.zig");
 
 pub const RoundedCornerPipeline = struct {
     pub const PushConstants = extern struct {
-        resolution: [2]f32, // offset  0
-        center: [2]f32, // offset  8
-        half_size: [2]f32, // offset 16
+        resolution: math.Vec2, // offset  0
+        center: math.Vec2, // offset  8
+        half_size: math.Vec2, // offset 16
         radius: f32, // offset 24
         border: f32, // offset 28
-        fill: [4]f32, // offset 32
-        border_color: [4]f32, // offset 48
+        fill: math.Vec4, // offset 32
+        border_color: math.Vec4, // offset 48
     }; // total   64 bytes
 
     pipeline: c.VkPipeline,

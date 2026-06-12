@@ -142,12 +142,12 @@ pub fn main() !void {
             try coloredVertexPipeline.draw(commandBuffer, &dodecTransform, &dodecahedron);
             try roundedRectanglePipeline.draw(commandBuffer, .{
                 .border = 5,
-                .border_color = .{ 1, 0, 0, 1 },
-                .center = .{ 200, 200 },
-                .fill = .{ 0, 1, 0, 1 },
-                .half_size = .{ 100, 50 },
+                .border_color = math.Vec4.init(.{ 1, 0, 0, 1 }),
+                .center = math.Vec2.init(.{ 200, 200 }),
+                .fill = math.Vec4.init(.{ 0, 1, 0, 1 }),
+                .half_size = math.Vec2.init(.{ 100, 50 }),
                 .radius = 25,
-                .resolution = .{ @as(f32, @floatFromInt(width)), @as(f32, @floatFromInt(height)) },
+                .resolution = math.Vec2.init(.{ @as(f32, @floatFromInt(width)), @as(f32, @floatFromInt(height)) }),
             });
         }
 
