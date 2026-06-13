@@ -24,6 +24,7 @@ const pam = @import("pam.zig");
 const platform = @import("platform.zig").platform;
 const RoundedRectanglePipeline = @import("RoundedRectanglePipeline.zig").RoundedCornerPipeline;
 const windows = @import("windows/window.zig");
+const Ui = @import("ui/ui.zig");
 
 const wayland_c = if (builtin.os.tag != .macos) @import("wayland").c else struct {
     const c = struct {};
@@ -35,6 +36,32 @@ fn key_handler(key: c_uint) void {
     if (key == 1) {
         shouldClose = true;
     }
+}
+
+const Context = struct {
+    pipeline: RoundedRectanglePipeline,
+    cmd: ?c.VkCommandBuffer,
+    resolution: math.Vec2,
+};
+
+fn drawRect(
+    context: *Context,
+    rect: Ui.Rect,
+    r: f32,
+    border: f32,
+    color: Ui.Color,
+    borderColor: Ui.Color,
+    _: ?Ui.Rect,
+) void {
+    context.pipeline.draw(context.cmd.?, .{
+        .border = border,
+        .border_color = math.Vec4.init(.{ borderColor[0], borderColor[1], borderColor[2], borderColor[3] }),
+        .center = math.Vec2.init(.{ rect.x + (rect.w / 2), rect.y + (rect.h / 2) }),
+        .fill = math.Vec4.init(.{ color[0], color[1], color[2], color[3] }),
+        .half_size = math.Vec2.init(.{ rect.w / 2, rect.h / 2 }),
+        .radius = r,
+        .resolution = context.resolution,
+    }) catch @panic("fail draw");
 }
 
 pub fn main() !void {
@@ -75,6 +102,13 @@ pub fn main() !void {
     defer coloredVertexPipeline.deinit();
     var roundedRectanglePipeline = try RoundedRectanglePipeline.init(vulkanContext);
     defer roundedRectanglePipeline.deinit();
+
+    var uiContext = Context{
+        .cmd = null,
+        .pipeline = roundedRectanglePipeline,
+        .resolution = math.Vec2.zero,
+    };
+    var ui = Ui.Ui(Context, .{ .drawRect = drawRect }).init(allocator, &uiContext);
 
     const mesh = try cube.getCube(&coloredVertexPipeline);
     defer mesh.deinit();
@@ -135,6 +169,8 @@ pub fn main() !void {
 
         {
             const commandBuffer = try vulkanContext.beginDraw();
+            uiContext.cmd = commandBuffer;
+            uiContext.resolution = math.Vec2.init(.{ @as(f32, @floatFromInt(width)), @as(f32, @floatFromInt(height)) });
             defer vulkanContext.endDraw() catch {
                 @panic("Failed to end draw");
             };
@@ -149,6 +185,18 @@ pub fn main() !void {
                 .radius = 25,
                 .resolution = math.Vec2.init(.{ @as(f32, @floatFromInt(width)), @as(f32, @floatFromInt(height)) }),
             });
+            ui.drawRect(
+                .{
+                    .x = 30,
+                    .y = 60,
+                    .w = 60,
+                    .h = 70,
+                },
+                .{ 0.25, 0.25, 0.30, 1 },
+                5,
+                .{ 0.1, 0.1, 0.1, 1 },
+                5,
+            );
         }
 
         time += 0.001;
