@@ -37,6 +37,14 @@ pub const Window = struct {
         return c.glfwWindowShouldClose(self.glfwWindow) == c.GLFW_TRUE;
     }
 
+    pub fn getSize(self: *const Window) struct { u32, u32 } {
+        var width: c_int = undefined;
+        var height: c_int = undefined;
+        c.glfwGetWindowSize(self.glfwWindow, &width, &height);
+
+        return .{ @intCast(width), @intCast(height) };
+    }
+
     pub fn getVulkanContext(
         self: *Window,
         allocator: std.mem.Allocator,

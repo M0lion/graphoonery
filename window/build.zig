@@ -1,5 +1,14 @@
 const std = @import("std");
 
+pub fn getModule(modules: anytype) *std.Build.Module {
+    return createModule(
+        modules.b,
+        modules.target,
+        modules.optimize,
+        modules.getImport("vulkan"),
+    );
+}
+
 pub fn createModule(
     b: *std.Build,
     target: std.Build.ResolvedTarget,

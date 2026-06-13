@@ -3,8 +3,10 @@ const vulkan = @import("vulkan/build.zig");
 const wayland = @import("wayland/build.zig");
 const window = @import("window/build.zig");
 const testbed = @import("testbed/build.zig");
+const ui = @import("ui/build.zig");
+const Modules = @import("moduleLoader.zig").Modules;
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -12,6 +14,9 @@ pub fn build(b: *std.Build) void {
     const shaders_module = vulkan.compileShaders(b, target, optimize) catch {
         @panic("Failed to compile shaders");
     };
+
+    var moduleLoader = Modules.init(b, target, optimize, shaders_module);
+    var modules = &moduleLoader;
 
     const vulkanImport = std.Build.Module.Import{
         .name = "vulkan",
@@ -21,18 +26,9 @@ pub fn build(b: *std.Build) void {
         .name = "wayland",
         .module = wayland.createModule(b, target, optimize),
     };
-    const windowImport = std.Build.Module.Import{
-        .name = "window",
-        .module = window.createModule(b, target, optimize, vulkanImport),
-    };
+    const uiImport = modules.getImport("ui");
 
-    const testbedModule = testbed.createModule(
-        b,
-        target,
-        optimize,
-        vulkanImport,
-        windowImport,
-    );
+    const testbedModule = testbed.getModule(modules);
     addExe(b, testbedModule, "testbed");
 
     // Executable 1
@@ -43,6 +39,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             vulkanImport,
             waylandImport,
+            uiImport,
         },
     });
     const mainExe = b.addExecutable(.{
