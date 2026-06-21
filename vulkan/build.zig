@@ -12,11 +12,31 @@ pub fn createModule(
 
     const vulkan_headers = b.dependency("vulkan_headers", .{});
     module.addIncludePath(vulkan_headers.path("include"));
-    module.addIncludePath(b.path("src/windows"));
-    module.linkSystemLibrary("vulkan", .{
-        .needed = true,
-        .preferred_link_mode = .static,
-    });
+
+    // The Vulkan headers are imported through @cImport, so we need libc.
+    module.link_libc = true;
+
+    switch (target.result.os.tag) {
+        .macos => {
+            // There is no native Vulkan on macOS: it is implemented by
+            // MoltenVK on top of Metal. Linking MoltenVK pulls in the
+            // Vulkan entry points; Metal/QuartzCore are needed for the
+            // VK_EXT_metal_surface path (CAMetalLayer), and the remaining
+            // frameworks are MoltenVK's own dependencies.
+            module.linkSystemLibrary("MoltenVK", .{ .needed = true });
+            module.linkFramework("Metal", .{});
+            module.linkFramework("QuartzCore", .{});
+            module.linkFramework("Foundation", .{});
+            module.linkFramework("IOSurface", .{});
+            module.linkFramework("IOKit", .{});
+        },
+        else => {
+            module.linkSystemLibrary("vulkan", .{
+                .needed = true,
+                .preferred_link_mode = .static,
+            });
+        },
+    }
 
     return module;
 }

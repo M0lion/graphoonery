@@ -49,6 +49,9 @@ pub const VulkanContext = struct {
     imageIndex: ?u32 = null,
     depthImageResults: []img.ImageResult,
 
+    /// Creates an instance and a surface from native window handles, then
+    /// builds the context. Used by the native window backends (custom Cocoa
+    /// window on macOS, raw Wayland on Linux).
     pub fn init(surfaceData: SurfaceData, width: u32, height: u32, allocator: std.mem.Allocator) !VulkanContext {
         const instance = try createInstance(.{
             .name = "Vulkan Test",
@@ -57,7 +60,7 @@ pub const VulkanContext = struct {
         var surface: c.VkSurfaceKHR = null;
         switch (comptime builtin.os.tag) {
             .macos => {
-                surface = try s.createMetalSurface(instance, .{ .windowHandle = surfaceData });
+                surface = try s.createMetalSurface(instance, surfaceData);
             },
             .linux => {
                 surface = try s.createWaylandSurface(instance, .{
@@ -68,6 +71,19 @@ pub const VulkanContext = struct {
             else => @compileError("Unsupported os"),
         }
 
+        return initWithSurface(instance, surface, width, height, allocator);
+    }
+
+    /// Builds the context from an already-created instance and surface. Used by
+    /// window backends that create the surface themselves (e.g. GLFW via
+    /// glfwCreateWindowSurface), keeping this module windowing-agnostic.
+    pub fn initWithSurface(
+        instance: c.VkInstance,
+        surface: c.VkSurfaceKHR,
+        width: u32,
+        height: u32,
+        allocator: std.mem.Allocator,
+    ) !VulkanContext {
         const physicalDeviceResult = try pDevice.pickPhysicalDevice(
             instance,
             allocator,
@@ -100,13 +116,18 @@ pub const VulkanContext = struct {
             surface,
         );
 
+        // The surface dictates the real extent on platforms with a fixed
+        // drawable size (macOS); the passed width/height are only a fallback
+        // for surfaces that let us choose (Wayland).
+        const extent = try sc.chooseExtent(physicalDevice, surface, width, height);
+
         const swapchain = try sc.createSwapchain(.{
             .physicalDevice = physicalDevice,
             .logicalDevice = logicalDevice,
             .surface = surface,
             .surfaceFormat = surfaceFormat,
-            .width = width,
-            .height = height,
+            .width = extent.width,
+            .height = extent.height,
             .allocator = allocator,
         });
 
@@ -121,7 +142,7 @@ pub const VulkanContext = struct {
         std.log.debug("Creating render pass", .{});
         const renderPass = try rp.createRenderPass(logicalDevice, surfaceFormat.format);
 
-        const depthImageResult = try img.createDepthImages(allocator, logicalDevice, physicalDevice, width, height, swapchainImages.len);
+        const depthImageResult = try img.createDepthImages(allocator, logicalDevice, physicalDevice, extent.width, extent.height, swapchainImages.len);
         var depthImageViews = try allocator.alloc(c.VkImageView, depthImageResult.len);
         for (depthImageResult, 0..) |result, i| {
             depthImageViews[i] = result.imageView;
@@ -134,8 +155,8 @@ pub const VulkanContext = struct {
             swapchainImages,
             depthImageViews,
             renderPass,
-            width,
-            height,
+            extent.width,
+            extent.height,
         );
 
         //std.log.debug("Commiting surface", .{});
@@ -163,8 +184,8 @@ pub const VulkanContext = struct {
             .queue = queue,
             .swapchain = swapchain,
             .swapchainImageFormat = surfaceFormat.format,
-            .width = width,
-            .height = height,
+            .width = extent.width,
+            .height = extent.height,
             .surfaceFormat = surfaceFormat,
             .renderPass = renderPass,
             .swapchainImages = swapchainImages,
@@ -187,14 +208,25 @@ pub const VulkanContext = struct {
 
         // 3. Acquire an image from the swapchain
         var imageIndex: u32 = undefined;
-        try vk.checkResult(c.vkAcquireNextImageKHR(
+        const acquire = c.vkAcquireNextImageKHR(
             logicalDevice,
             self.swapchain,
             std.math.maxInt(u64),
             imageAvailableSemaphore,
             null,
             &imageIndex,
-        ));
+        );
+        switch (acquire) {
+            c.VK_SUCCESS => {},
+            // The image is still usable, but the swapchain no longer matches
+            // the surface (typically a stale extent). Tolerate it for this
+            // frame, but log it so a recurring mismatch is visible.
+            c.VK_SUBOPTIMAL_KHR => std.log.warn(
+                "vkAcquireNextImageKHR: VK_SUBOPTIMAL_KHR (swapchain extent may be stale)",
+                .{},
+            ),
+            else => try vk.checkResult(acquire),
+        }
         self.imageIndex = imageIndex;
 
         // 3. Reset and record command buffer
@@ -311,22 +343,34 @@ pub const VulkanContext = struct {
         };
         self.imageIndex = null;
 
-        try vk.checkResult(c.vkQueuePresentKHR(self.queue, &presentInfo));
+        const present = c.vkQueuePresentKHR(self.queue, &presentInfo);
+        switch (present) {
+            c.VK_SUCCESS => {},
+            c.VK_SUBOPTIMAL_KHR => std.log.warn(
+                "vkQueuePresentKHR: VK_SUBOPTIMAL_KHR (swapchain extent may be stale)",
+                .{},
+            ),
+            else => try vk.checkResult(present),
+        }
     }
 
     pub fn resize(self: *VulkanContext, width: u32, height: u32) !void {
-        //const oldSwapchain = self.swapchain;
-        self.width = width;
-        self.height = height;
         try vk.checkResult(c.vkDeviceWaitIdle(self.logicalDevice));
+
+        // Re-derive the extent from the surface, same as initial creation:
+        // the passed size is only a fallback for surfaces that let us choose.
+        const extent = try sc.chooseExtent(self.physicalDevice, self.surface, width, height);
+        self.width = extent.width;
+        self.height = extent.height;
+
         self.cleanupSwapchain();
         self.swapchain = try sc.createSwapchain(.{
             .physicalDevice = self.physicalDevice,
             .logicalDevice = self.logicalDevice,
             .surface = self.surface,
             .surfaceFormat = self.surfaceFormat,
-            .width = width,
-            .height = height,
+            .width = extent.width,
+            .height = extent.height,
             .allocator = self.allocator,
         });
 
@@ -341,8 +385,8 @@ pub const VulkanContext = struct {
             self.allocator,
             self.logicalDevice,
             self.physicalDevice,
-            width,
-            height,
+            extent.width,
+            extent.height,
             self.swapchainImages.len,
         );
         var depthImageViews = try self.allocator.alloc(
@@ -359,8 +403,8 @@ pub const VulkanContext = struct {
             self.swapchainImages,
             depthImageViews,
             self.renderPass,
-            width,
-            height,
+            extent.width,
+            extent.height,
         );
     }
 

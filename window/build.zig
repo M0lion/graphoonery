@@ -19,6 +19,17 @@ pub fn createModule(
     module.addObjectFile(b.path(getGLFWLibPath(target)));
     module.link_libc = true;
 
+    // The prebuilt GLFW static libs reference platform windowing frameworks
+    // that must be linked by whatever pulls GLFW in.
+    switch (target.result.os.tag) {
+        .macos => {
+            module.linkFramework("Cocoa", .{});
+            module.linkFramework("IOKit", .{});
+            module.linkFramework("CoreFoundation", .{});
+        },
+        else => {},
+    }
+
     return module;
 }
 

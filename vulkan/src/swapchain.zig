@@ -121,6 +121,48 @@ fn getCompositeAlpha(capabilities: c.VkSurfaceCapabilitiesKHR) c.VkCompositeAlph
     return compositeAlpha;
 }
 
+pub const Extent = struct { width: u32, height: u32 };
+
+/// Picks the swapchain extent. When the surface reports a fixed size
+/// (currentExtent != 0xFFFFFFFF — e.g. macOS/Metal, where it is the
+/// CAMetalLayer drawable size in pixels) we must match it exactly or the
+/// swapchain comes back SUBOPTIMAL. When it reports the 0xFFFFFFFF sentinel
+/// (e.g. Wayland, where the surface has no inherent size) we choose our own
+/// size, clamped to the supported range.
+pub fn chooseExtent(
+    physicalDevice: c.VkPhysicalDevice,
+    surface: c.VkSurfaceKHR,
+    fallback_width: u32,
+    fallback_height: u32,
+) !Extent {
+    var capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+    try vk.checkResult(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        physicalDevice,
+        surface,
+        &capabilities,
+    ));
+
+    if (capabilities.currentExtent.width != 0xFFFFFFFF) {
+        return .{
+            .width = capabilities.currentExtent.width,
+            .height = capabilities.currentExtent.height,
+        };
+    }
+
+    return .{
+        .width = std.math.clamp(
+            fallback_width,
+            capabilities.minImageExtent.width,
+            capabilities.maxImageExtent.width,
+        ),
+        .height = std.math.clamp(
+            fallback_height,
+            capabilities.minImageExtent.height,
+            capabilities.maxImageExtent.height,
+        ),
+    };
+}
+
 pub const SwapchainConfig = struct {
     physicalDevice: c.VkPhysicalDevice,
     logicalDevice: c.VkDevice,

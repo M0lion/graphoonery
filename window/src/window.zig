@@ -2,13 +2,30 @@ const std = @import("std");
 const glfw = @import("glfw.zig");
 const c = glfw.c;
 const vulkan = @import("vulkan");
+const vk = vulkan.vk.c;
 const in = @import("input.zig");
+
+// GLFW's Vulkan helpers are not part of glfw.zig's @cImport (it doesn't pull in
+// the Vulkan headers), so declare them here against the vulkan module's types.
+// This also keeps the handle types identical to those VulkanContext expects.
+extern fn glfwCreateWindowSurface(
+    instance: vk.VkInstance,
+    window: ?*c.struct_GLFWwindow,
+    allocator: ?*const vk.VkAllocationCallbacks,
+    surface: *vk.VkSurfaceKHR,
+) vk.VkResult;
+extern fn glfwInitVulkanLoader(loader: vk.PFN_vkGetInstanceProcAddr) void;
 
 pub const Window = struct {
     glfwWindow: *c.struct_GLFWwindow,
     input: in.Input,
 
     pub fn init(width: u32, height: u32) Window {
+        // Point GLFW at the directly-linked Vulkan implementation (MoltenVK on
+        // macOS) so it doesn't have to dlopen a separate loader at runtime.
+        // Must happen before glfwInit.
+        glfwInitVulkanLoader(vk.vkGetInstanceProcAddr);
+
         if (c.glfwInit() == c.GLFW_FALSE) {
             @panic("Failed to init glfw");
         }
@@ -41,33 +58,31 @@ pub const Window = struct {
         self: *Window,
         allocator: std.mem.Allocator,
     ) !vulkan.context.VulkanContext {
-        const platform = c.glfwGetPlatform();
-
-        if (platform == c.GLFW_PLATFORM_WAYLAND) {
-            self.pollEvents();
-        }
-
+        // Framebuffer size is in pixels (unlike window size, which is in logical
+        // points on HiDPI). It's only a fallback: on surfaces with a fixed
+        // extent (macOS) the context uses the surface's currentExtent instead.
         var width: c_int = undefined;
         var height: c_int = undefined;
-        c.glfwGetWindowSize(self.glfwWindow, &width, &height);
+        c.glfwGetFramebufferSize(self.glfwWindow, &width, &height);
 
-        switch (platform) {
-            c.GLFW_PLATFORM_WAYLAND => {
-                const display = c.glfwGetWaylandDisplay() orelse
-                    @panic("Could not get wayland display");
-                const surface = c.glfwGetWaylandWindow(self.glfwWindow) orelse
-                    @panic("could not get wayland window");
-                return try vulkan.context.VulkanContext.init(
-                    .{
-                        .display = @ptrCast(display),
-                        .surface = @ptrCast(surface),
-                    },
-                    @intCast(width),
-                    @intCast(height),
-                    allocator,
-                );
-            },
-            else => @panic("Unsupported platform"),
+        // Let GLFW create the platform surface (Wayland on Linux, Metal/Cocoa
+        // on macOS). The instance is created here so we can hand both to the
+        // context.
+        const instance = try vulkan.instance.createInstance(.{ .name = "Testbed" });
+
+        var surface: vk.VkSurfaceKHR = null;
+        const result = glfwCreateWindowSurface(instance, self.glfwWindow, null, &surface);
+        if (result != vk.VK_SUCCESS) {
+            std.log.err("glfwCreateWindowSurface failed: {d}", .{result});
+            return error.SurfaceCreationFailed;
         }
+
+        return try vulkan.context.VulkanContext.initWithSurface(
+            instance,
+            surface,
+            @intCast(width),
+            @intCast(height),
+            allocator,
+        );
     }
 };

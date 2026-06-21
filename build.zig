@@ -103,10 +103,14 @@ fn addExe(
         .root_module = module,
     });
     exe.use_llvm = true;
-    exe.use_lld = true;
-    b.installArtifact(exe);
+    // LLD can't link mach-o; only force it where it's the intended workaround.
+    if (module.resolved_target.?.result.os.tag != .macos) {
+        exe.use_lld = true;
+    }
+    const install = b.addInstallArtifact(exe, .{});
+    b.getInstallStep().dependOn(&install.step);
     const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
+    run_cmd.step.dependOn(&install.step);
     const run_step = b.step(name, b.fmt("Run {s}", .{name}));
     run_step.dependOn(&run_cmd.step);
 }
@@ -121,15 +125,14 @@ fn configureExecutable(
     // Add shaders module
     module.addImport("shaders", shaders_module);
 
-    // Platform-specific setup
+    // Platform-specific windowing setup. Vulkan/Metal linking now lives in
+    // the vulkan module; what remains here is the custom Cocoa window used by
+    // the graphoonery/lockfoonery executables.
     if (target.result.os.tag == .macos) {
         exe.addCSourceFile(.{
             .file = b.path("src/macos_window.m"),
         });
         exe.linkFramework("Cocoa");
-        exe.linkFramework("QuartzCore");
-        exe.linkFramework("Metal");
-        exe.linkSystemLibrary("MoltenVK");
     } else {}
 
     exe.linkLibC();
