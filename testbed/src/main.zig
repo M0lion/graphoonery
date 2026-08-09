@@ -17,6 +17,6 @@ pub fn main() !void {
         }
         _ = try context.beginDraw();
         try context.endDraw();
-        window.pollEvents();
+        _ = window.pollEvents();
     }
 }

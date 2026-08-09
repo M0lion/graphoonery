@@ -3,7 +3,58 @@ const vulkan = @import("vulkan/build.zig");
 const wayland = @import("wayland/build.zig");
 const window = @import("window/build.zig");
 const testbed = @import("testbed/build.zig");
+const surfaceDrawing = @import("surface-drawing/build.zig");
+const math = @import("math/build.zig");
+const ui = @import("ui/build.zig");
 
+pub fn FooBuilder(
+    Dependencies: type,
+    createModule: *const fn (
+        b: *std.Build,
+        target: std.Build.ResolvedTarget,
+        optimize: std.builtin.OptimizeMode,
+        dependencies: anytype,
+    ) *std.Build.Module,
+) type {
+    return struct {
+        name: []const u8,
+        import: ?std.Build.Module.Import = null,
+
+        b: *std.Build,
+        target: std.Build.ResolvedTarget,
+        optimize: std.builtin.OptimizeMode,
+
+        fn getImport(
+            self: *@This(),
+            dependencies: anytype,
+        ) std.Build.Module.Import {
+            if (self.import) |import| {
+                return import;
+            } else {
+                const deps: Dependencies = undefined;
+
+                for (@typeInfo(Dependencies).@"struct".fields) |field| {
+                    @field(deps, field.name) = @field(@TypeOf(dependencies), field.name).getImport(
+                        dependencies,
+                    );
+                }
+
+                const module = createModule(
+                    self.b,
+                    self.target,
+                    self.optimize,
+                    deps,
+                );
+                self.import = std.Build.Module.Import{
+                    .name = self.name,
+                    .module = module,
+                };
+
+                return self.import.?;
+            }
+        }
+    };
+}
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -11,6 +62,23 @@ pub fn build(b: *std.Build) void {
     // Generate shared artifacts once
     const shaders_module = vulkan.compileShaders(b, target, optimize) catch {
         @panic("Failed to compile shaders");
+    };
+    const shadersImport = std.Build.Module.Import{
+        .name = "shaders",
+        .module = shaders_module,
+    };
+
+    var mathFoo = FooBuilder(math.Dependencies, &math.createModule){
+        .name = "math",
+        .b = b,
+        .target = target,
+        .optimize = optimize,
+    };
+    var uiFoo = FooBuilder(ui.Dependencies, &ui.createModule){
+        .name = "ui",
+        .b = b,
+        .target = target,
+        .optimize = optimize,
     };
 
     const vulkanImport = std.Build.Module.Import{
@@ -23,7 +91,7 @@ pub fn build(b: *std.Build) void {
     };
     const windowImport = std.Build.Module.Import{
         .name = "window",
-        .module = window.createModule(b, target, optimize, vulkanImport),
+        .module = window.createModule(b, target, optimize, vulkanImport, mathFoo.getImport({})),
     };
 
     const testbedModule = testbed.createModule(
@@ -34,6 +102,18 @@ pub fn build(b: *std.Build) void {
         windowImport,
     );
     addExe(b, testbedModule, "testbed");
+
+    const surfaceDrawingModule = surfaceDrawing.createModule(
+        b,
+        target,
+        optimize,
+        vulkanImport,
+        windowImport,
+        mathFoo.getImport({}),
+        uiFoo.getImport({}),
+        shadersImport,
+    );
+    addExe(b, surfaceDrawingModule, "surfaceDrawing");
 
     // Executable 1
     const mainModule = b.createModule(.{

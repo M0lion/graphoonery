@@ -1,57 +1,100 @@
 const std = @import("std");
 const glfw = @import("glfw.zig");
-const c = glfw.c;
 const vulkan = @import("vulkan");
 const vk = vulkan.vk.c;
 const in = @import("input.zig");
+const c = @import("sdl.zig").c;
+const math = @import("math");
 
-// GLFW's Vulkan helpers are not part of glfw.zig's @cImport (it doesn't pull in
-// the Vulkan headers), so declare them here against the vulkan module's types.
-// This also keeps the handle types identical to those VulkanContext expects.
-extern fn glfwCreateWindowSurface(
-    instance: vk.VkInstance,
-    window: ?*c.struct_GLFWwindow,
-    allocator: ?*const vk.VkAllocationCallbacks,
-    surface: *vk.VkSurfaceKHR,
-) vk.VkResult;
-extern fn glfwInitVulkanLoader(loader: vk.PFN_vkGetInstanceProcAddr) void;
+pub const EventType = enum {
+    TouchEvent,
+    ClickEvent,
+};
+
+pub const Event = union(EventType) {
+    TouchEvent: math.Vec2,
+    ClickEvent: math.Vec2,
+};
 
 pub const Window = struct {
-    glfwWindow: *c.struct_GLFWwindow,
+    window: *c.struct_SDL_Window,
     input: in.Input,
+    windowShouldClose: bool = false,
 
     pub fn init(width: u32, height: u32) Window {
-        // Point GLFW at the directly-linked Vulkan implementation (MoltenVK on
-        // macOS) so it doesn't have to dlopen a separate loader at runtime.
-        // Must happen before glfwInit.
-        glfwInitVulkanLoader(vk.vkGetInstanceProcAddr);
-
-        if (c.glfwInit() == c.GLFW_FALSE) {
-            @panic("Failed to init glfw");
+        if (!c.SDL_Init(c.SDL_INIT_VIDEO)) {
+            @panic("foo");
         }
 
-        c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
-
-        const window = c.glfwCreateWindow(@intCast(width), @intCast(height), "Test", null, null) orelse
+        const window = c.SDL_CreateWindow("hello", @intCast(width), @intCast(height), 0) orelse
             @panic("Could not create window");
 
+        const input = in.Input.init(window);
+
         return Window{
-            .glfwWindow = window,
-            .input = in.Input.init(window),
+            .window = window,
+            .input = input,
         };
     }
 
     pub fn deinit(self: *const Window) void {
-        c.glfwDestroyWindow(self.glfwWindow);
+        c.SDL_DestroyWindow(self.window);
+        c.SDL_Quit();
     }
 
-    pub fn pollEvents(self: *Window) void {
-        c.glfwPollEvents();
-        in.updateInput(&self.input);
+    pub fn pollEvents(self: *Window) []Event {
+        var event: c.SDL_Event = undefined;
+        var events: [64]Event = undefined;
+        var eventCount: usize = 0;
+        while (c.SDL_PollEvent(&event)) {
+            switch (event.type) {
+                c.SDL_EVENT_KEY_DOWN => {
+                    const name = c.SDL_GetKeyName(event.key.key);
+                    std.debug.print("Keycode: {s}\nScanCode: {x}\n", .{ name, event.key.scancode });
+                    if (event.key.scancode == c.SDL_SCANCODE_ESCAPE) {
+                        self.windowShouldClose = true;
+                        continue;
+                    }
+                },
+                c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
+                    self.windowShouldClose = true;
+                    continue;
+                },
+                c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                    events[eventCount] = Event{ .ClickEvent = math.Vec2.init(
+                        .{
+                            event.button.x - 25,
+                            event.button.y - 25,
+                        },
+                    ) };
+                    eventCount += 1;
+                },
+                c.SDL_EVENT_FINGER_DOWN => {
+                    var width: c_int = 0;
+                    var height: c_int = 0;
+                    if (!c.SDL_GetWindowSize(self.window, &width, &height)) {
+                        @panic("Could not get window size");
+                    }
+                    std.debug.print("Raw FINGER_DOWN: ({},{}) - ({},{})\n", .{ event.tfinger.x, event.tfinger.y, width, height });
+                    events[eventCount] = Event{ .TouchEvent = math.Vec2.init(
+                        .{
+                            (event.tfinger.x * @as(f32, @floatFromInt(width))) - 25,
+                            (event.tfinger.y * @as(f32, @floatFromInt(height))) - 25,
+                        },
+                    ) };
+                    eventCount += 1;
+                },
+                else => {
+                    std.debug.print("{}\n", .{event.type});
+                },
+            }
+        }
+
+        return events[0..eventCount];
     }
 
     pub fn shouldClose(self: *const Window) bool {
-        return c.glfwWindowShouldClose(self.glfwWindow) == c.GLFW_TRUE;
+        return self.windowShouldClose;
     }
 
     pub fn getVulkanContext(
@@ -63,17 +106,17 @@ pub const Window = struct {
         // extent (macOS) the context uses the surface's currentExtent instead.
         var width: c_int = undefined;
         var height: c_int = undefined;
-        c.glfwGetFramebufferSize(self.glfwWindow, &width, &height);
+        if (!c.SDL_GetWindowSize(self.window, &width, &height)) @panic("Failed to get window size");
 
-        // Let GLFW create the platform surface (Wayland on Linux, Metal/Cocoa
-        // on macOS). The instance is created here so we can hand both to the
-        // context.
-        const instance = try vulkan.instance.createInstance(.{ .name = "Testbed" });
+        var extensionCount: c_uint = 0;
+        const extensions = c.SDL_Vulkan_GetInstanceExtensions(&extensionCount) orelse
+            @panic("could not get sdl vulkan extensions");
+
+        const instance = try vulkan.instance.createInstance(.{ .name = "Testbed" }, extensions[0..extensionCount]);
 
         var surface: vk.VkSurfaceKHR = null;
-        const result = glfwCreateWindowSurface(instance, self.glfwWindow, null, &surface);
-        if (result != vk.VK_SUCCESS) {
-            std.log.err("glfwCreateWindowSurface failed: {d}", .{result});
+        if (!c.SDL_Vulkan_CreateSurface(self.window, @ptrCast(instance), null, &surface)) {
+            std.log.err("sdl surface creation failed", .{});
             return error.SurfaceCreationFailed;
         }
 

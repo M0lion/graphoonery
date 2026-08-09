@@ -53,9 +53,12 @@ pub const VulkanContext = struct {
     /// builds the context. Used by the native window backends (custom Cocoa
     /// window on macOS, raw Wayland on Linux).
     pub fn init(surfaceData: SurfaceData, width: u32, height: u32, allocator: std.mem.Allocator) !VulkanContext {
-        const instance = try createInstance(.{
-            .name = "Vulkan Test",
-        });
+        const instance = try createInstance(
+            .{
+                .name = "Vulkan Test",
+            },
+            &.{},
+        );
 
         var surface: c.VkSurfaceKHR = null;
         switch (comptime builtin.os.tag) {

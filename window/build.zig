@@ -5,6 +5,7 @@ pub fn createModule(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     vulkanImport: std.Build.Module.Import,
+    mathImport: std.Build.Module.Import,
 ) *std.Build.Module {
     const module = b.createModule(.{
         .root_source_file = b.path("window/src/lib.zig"),
@@ -12,11 +13,13 @@ pub fn createModule(
         .optimize = optimize,
         .imports = &.{
             vulkanImport,
+            mathImport,
         },
     });
 
     module.addIncludePath(b.path("window/glfw/include/"));
     module.addObjectFile(b.path(getGLFWLibPath(target)));
+    module.linkSystemLibrary("SDL3", .{});
     module.link_libc = true;
 
     // The prebuilt GLFW static libs reference platform windowing frameworks

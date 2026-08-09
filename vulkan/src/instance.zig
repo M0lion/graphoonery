@@ -8,7 +8,7 @@ pub const ApplicationInfo = struct {
     validationLayersEnabled: bool = false,
 };
 
-pub fn createInstance(info: ApplicationInfo) !c.VkInstance {
+pub fn createInstance(info: ApplicationInfo, extensions: ?[]const [*c]const u8) !c.VkInstance {
     // Create Vulkan instance
     const requestedVersion = vk.API_VERSION_1_0;
     const app_info = c.VkApplicationInfo{
@@ -32,7 +32,7 @@ pub fn createInstance(info: ApplicationInfo) !c.VkInstance {
     });
 
     // Simpler extension list for older MoltenVK
-    const extensions = switch (builtin.os.tag) {
+    const defaultExtensions = switch (builtin.os.tag) {
         .macos => [_][*:0]const u8{
             c.VK_KHR_SURFACE_EXTENSION_NAME,
             c.VK_EXT_METAL_SURFACE_EXTENSION_NAME,
@@ -50,6 +50,8 @@ pub fn createInstance(info: ApplicationInfo) !c.VkInstance {
         "VK_LAYER_KHRONOS_validation",
     };
 
+    const actualExtensions = extensions orelse defaultExtensions[0..];
+
     const instance_create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = null,
@@ -57,8 +59,8 @@ pub fn createInstance(info: ApplicationInfo) !c.VkInstance {
         .pApplicationInfo = &app_info,
         .enabledLayerCount = if (info.validationLayersEnabled) 1 else 0,
         .ppEnabledLayerNames = &layers,
-        .enabledExtensionCount = extensions.len,
-        .ppEnabledExtensionNames = &extensions,
+        .enabledExtensionCount = @intCast(actualExtensions.len),
+        .ppEnabledExtensionNames = actualExtensions.ptr,
     };
 
     std.log.debug("Creating instance", .{});
