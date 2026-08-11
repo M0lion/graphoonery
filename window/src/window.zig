@@ -25,6 +25,7 @@ pub const Window = struct {
     windowShouldClose: bool = false,
 
     pub fn init(width: u32, height: u32) Window {
+        c.SDL_SetHint(c.SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
         if (!c.SDL_Init(c.SDL_INIT_VIDEO)) {
             @panic("foo");
         }
