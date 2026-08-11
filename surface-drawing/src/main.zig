@@ -62,7 +62,7 @@ pub fn main() !void {
     while (!window.shouldClose()) {
         for (window.pollEvents()) |event| {
             switch (event) {
-                w.Event.TouchEvent => |pos| {
+                w.Event.Touch, w.Event.Click, w.Event.TouchMove => |pos| {
                     x = pos.x();
                     y = pos.y();
                     std.debug.print("Processed event: ({},{})\n", .{ x, y });

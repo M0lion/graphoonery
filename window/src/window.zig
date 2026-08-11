@@ -8,15 +8,17 @@ const math = @import("math");
 const keys = @import("keys.zig");
 
 pub const EventType = enum {
-    TouchEvent,
-    ClickEvent,
-    KeyDownEvent,
+    Touch,
+    TouchMove,
+    Click,
+    KeyDown,
 };
 
 pub const Event = union(EventType) {
-    TouchEvent: math.Vec2,
-    ClickEvent: math.Vec2,
-    KeyDownEvent: keys.Key,
+    Touch: math.Vec2,
+    TouchMove: math.Vec2,
+    Click: math.Vec2,
+    KeyDown: keys.Key,
 };
 
 pub const Window = struct {
@@ -25,7 +27,7 @@ pub const Window = struct {
     windowShouldClose: bool = false,
 
     pub fn init(width: u32, height: u32) Window {
-        c.SDL_SetHint(c.SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+        _ = c.SDL_SetHint(c.SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
         if (!c.SDL_Init(c.SDL_INIT_VIDEO)) {
             @panic("foo");
         }
@@ -51,20 +53,26 @@ pub const Window = struct {
     }
 
     pub fn pollEvents(self: *Window) []Event {
-        var event: c.SDL_Event = undefined;
+        var width: c_int = 0;
+        var height: c_int = 0;
+        if (!c.SDL_GetWindowSize(self.window, &width, &height)) {
+            @panic("Could not get window size");
+        }
+
+        var e: c.SDL_Event = undefined;
         var events: [64]Event = undefined;
         var eventCount: usize = 0;
-        while (c.SDL_PollEvent(&event)) {
-            switch (event.type) {
+        while (c.SDL_PollEvent(&e)) {
+            switch (e.type) {
                 c.SDL_EVENT_KEY_DOWN => {
-                    const name = c.SDL_GetKeyName(event.key.key);
-                    std.debug.print("Keycode: {s}\nScanCode: {x}\n", .{ name, event.key.scancode });
-                    if (event.key.scancode == c.SDL_SCANCODE_ESCAPE) {
+                    const name = c.SDL_GetKeyName(e.key.key);
+                    std.debug.print("Keycode: {s}\nScanCode: {x}\n", .{ name, e.key.scancode });
+                    if (e.key.scancode == c.SDL_SCANCODE_ESCAPE) {
                         self.windowShouldClose = true;
                         continue;
                     }
                     events[eventCount] = Event{
-                        .KeyDownEvent = keys.getKeyFromSdlScancode(event.key.scancode),
+                        .KeyDown = keys.getKeyFromSdlScancode(e.key.scancode),
                     };
                     eventCount += 1;
                 },
@@ -73,31 +81,29 @@ pub const Window = struct {
                     continue;
                 },
                 c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
-                    events[eventCount] = Event{ .ClickEvent = math.Vec2.init(
-                        .{
-                            event.button.x - 25,
-                            event.button.y - 25,
-                        },
-                    ) };
+                    events[eventCount] = Event{ .Click = math.Vec2.init(.{
+                        e.button.x,
+                        e.button.y,
+                    }) };
                     eventCount += 1;
                 },
                 c.SDL_EVENT_FINGER_DOWN => {
-                    var width: c_int = 0;
-                    var height: c_int = 0;
-                    if (!c.SDL_GetWindowSize(self.window, &width, &height)) {
-                        @panic("Could not get window size");
-                    }
-                    std.debug.print("Raw FINGER_DOWN: ({},{}) - ({},{})\n", .{ event.tfinger.x, event.tfinger.y, width, height });
-                    events[eventCount] = Event{ .TouchEvent = math.Vec2.init(
-                        .{
-                            (event.tfinger.x * @as(f32, @floatFromInt(width))) - 25,
-                            (event.tfinger.y * @as(f32, @floatFromInt(height))) - 25,
-                        },
-                    ) };
+                    std.debug.print("Raw FINGER_DOWN: ({},{}) - ({},{})\n", .{ e.tfinger.x, e.tfinger.y, width, height });
+                    events[eventCount] = Event{ .Touch = math.Vec2.init(.{
+                        (e.tfinger.x * @as(f32, @floatFromInt(width))) - 25,
+                        (e.tfinger.y * @as(f32, @floatFromInt(height))) - 25,
+                    }) };
+                    eventCount += 1;
+                },
+                c.SDL_EVENT_FINGER_MOTION => {
+                    events[eventCount] = Event{ .TouchMove = math.Vec2.init(.{
+                        e.tfinger.x * @as(f32, @floatFromInt(width)),
+                        e.tfinger.y * @as(f32, @floatFromInt(height)),
+                    }) };
                     eventCount += 1;
                 },
                 else => {
-                    std.debug.print("{}\n", .{event.type});
+                    std.debug.print("{}\n", .{e.type});
                 },
             }
         }
