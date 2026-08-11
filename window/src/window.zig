@@ -5,15 +5,18 @@ const vk = vulkan.vk.c;
 const in = @import("input.zig");
 const c = @import("sdl.zig").c;
 const math = @import("math");
+const keys = @import("keys.zig");
 
 pub const EventType = enum {
     TouchEvent,
     ClickEvent,
+    KeyDownEvent,
 };
 
 pub const Event = union(EventType) {
     TouchEvent: math.Vec2,
     ClickEvent: math.Vec2,
+    KeyDownEvent: keys.Key,
 };
 
 pub const Window = struct {
@@ -42,6 +45,10 @@ pub const Window = struct {
         c.SDL_Quit();
     }
 
+    pub fn hideCursor() bool {
+        return c.SDL_HideCursor();
+    }
+
     pub fn pollEvents(self: *Window) []Event {
         var event: c.SDL_Event = undefined;
         var events: [64]Event = undefined;
@@ -55,6 +62,10 @@ pub const Window = struct {
                         self.windowShouldClose = true;
                         continue;
                     }
+                    events[eventCount] = Event{
+                        .KeyDownEvent = keys.getKeyFromSdlScancode(event.key.scancode),
+                    };
+                    eventCount += 1;
                 },
                 c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
                     self.windowShouldClose = true;

@@ -3,6 +3,7 @@ const w = @import("window");
 const Window = w.Window;
 const vulkan = @import("vulkan");
 const RoundedRectanglePipeline = @import("RoundedRectanglePipeline.zig").RoundedCornerPipeline;
+const DrawingPipeline = @import("DrawingPipeline.zig").DrawingPipeline;
 const Ui = @import("ui");
 const math = @import("math");
 
@@ -38,14 +39,18 @@ pub fn main() !void {
 
     var window = Window.init(1920, 1280);
     defer window.deinit();
+    _ = Window.hideCursor();
 
     var context = try window.getVulkanContext(allocator);
 
     var roundedRectanglePipeline = try RoundedRectanglePipeline.init(context);
     defer roundedRectanglePipeline.deinit();
 
-    var x: f32 = 50;
-    var y: f32 = 50;
+    var drawingPipeline = try DrawingPipeline.init(context);
+    defer drawingPipeline.deinit();
+
+    var x: f32 = 500;
+    var y: f32 = 500;
 
     var uiContext = Context{
         .cmd = null,
@@ -68,10 +73,13 @@ pub fn main() !void {
         const cmd = try context.beginDraw();
         uiContext.cmd = cmd;
 
-        x += 0;
-        y += 0;
-
-        ui.drawRect(.{ .h = 50, .w = 50, .x = x, .y = y }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 4);
+        ui.drawRect(.{ .h = 50, .w = 50, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 4);
+        try drawingPipeline.draw(cmd, .{
+            .center = math.Vec2.init(.{ x, y }),
+            .fill = math.Vec4.init(.{ 1, 1, 1, 1 }),
+            .radius = 50,
+            .resolution = math.Vec2.init(.{ 1920, 1280 }),
+        });
 
         uiContext.cmd = null;
         try context.endDraw();
