@@ -11,8 +11,6 @@ pub const PipelineConfig = struct {
     logicalDevice: c.VkDevice,
     vertShaderModule: c.VkShaderModule,
     fragShaderModule: c.VkShaderModule,
-    width: u32,
-    height: u32,
     renderPass: c.VkRenderPass,
     descriptorSetLayouts: ?[]const c.VkDescriptorSetLayout = null,
     vertexBindingDescriptions: ?[]const c.VkVertexInputBindingDescription = null,
@@ -70,31 +68,14 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .primitiveRestartEnable = c.VK_FALSE,
     };
 
-    var viewport = c.VkViewport{
-        .x = 0.0,
-        .y = 0.0,
-        .width = @floatFromInt(config.width),
-        .height = @floatFromInt(config.height),
-        .minDepth = 0.0,
-        .maxDepth = 1.0,
-    };
-
-    var scissor = c.VkRect2D{
-        .offset = .{ .x = 0, .y = 0 },
-        .extent = c.VkExtent2D{
-            .width = config.width,
-            .height = config.height,
-        },
-    };
-
     var viewportState = c.VkPipelineViewportStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .pNext = null,
         .flags = 0,
         .viewportCount = 1,
-        .pViewports = &viewport,
+        .pViewports = null,
         .scissorCount = 1,
-        .pScissors = &scissor,
+        .pScissors = null,
     };
 
     var rasterizer = c.VkPipelineRasterizationStateCreateInfo{

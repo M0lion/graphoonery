@@ -40,7 +40,7 @@ pub const VulkanContext = struct {
     width: u32,
     height: u32,
     surfaceFormat: c.VkSurfaceFormatKHR,
-    renderPass: c.VkRenderPass,
+    swapchainRenderPass: c.VkRenderPass,
     swapchainImages: []sc.SwapchainImage,
     framebuffers: []c.VkFramebuffer,
     syncObjects: sync.SyncObjects,
@@ -190,7 +190,7 @@ pub const VulkanContext = struct {
             .width = extent.width,
             .height = extent.height,
             .surfaceFormat = surfaceFormat,
-            .renderPass = renderPass,
+            .swapchainRenderPass = renderPass,
             .swapchainImages = swapchainImages,
             .framebuffers = framebuffers,
             .syncObjects = syncObjects,
@@ -200,14 +200,69 @@ pub const VulkanContext = struct {
         };
     }
 
-    pub fn beginDraw(self: *VulkanContext) !c.VkCommandBuffer {
-        const logicalDevice = self.logicalDevice;
-        const inFlightFence = self.syncObjects.inFlightFence;
-        const imageAvailableSemaphore = self.syncObjects.imageAvailableSemaphore;
+    pub const BeginPassArgs = struct {
+        cmd: c.VkCommandBuffer,
+        framebuffer: c.VkFramebuffer,
+        clearValues: []const c.VkClearValue,
+        extent: c.VkExtent2D,
+        renderPass: c.VkRenderPass,
+    };
 
-        // 2. Wait for the previous frame to finish
-        try vk.checkResult(c.vkWaitForFences(logicalDevice, 1, &inFlightFence, c.VK_TRUE, std.math.maxInt(u64)));
-        try vk.checkResult(c.vkResetFences(logicalDevice, 1, &inFlightFence));
+    pub fn beginPass(self: *VulkanContext, args: BeginPassArgs) !void {
+        // Begin render pass
+        var renderPassInfo = c.VkRenderPassBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .pNext = null,
+            .renderPass = args.renderPass,
+            .framebuffer = args.framebuffer,
+            .renderArea = .{
+                .offset = .{ .x = 0, .y = 0 },
+                .extent = c.VkExtent2D{
+                    .width = self.width,
+                    .height = self.height,
+                },
+            },
+            .clearValueCount = @intCast(args.clearValues.len),
+            .pClearValues = args.clearValues.ptr,
+        };
+
+        c.vkCmdBeginRenderPass(
+            args.cmd,
+            &renderPassInfo,
+            c.VK_SUBPASS_CONTENTS_INLINE,
+        );
+
+        const viewport = c.VkViewport{
+            .x = 0.0,
+            .y = 0.0,
+            .width = @floatFromInt(self.width),
+            .height = @floatFromInt(self.height),
+            .minDepth = 0.0,
+            .maxDepth = 1.0,
+        };
+        c.vkCmdSetViewport(self.commandBuffer, 0, 1, &viewport);
+
+        const scissor = c.VkRect2D{
+            .offset = .{
+                .x = 0,
+                .y = 0,
+            },
+            .extent = args.extent,
+        };
+        c.vkCmdSetScissor(args.cmd, 0, 1, &scissor);
+    }
+
+    pub fn endPass(self: *VulkanContext) void {
+        c.vkCmdEndRenderPass(self.commandBuffer);
+    }
+
+    pub const BeginSwpachainPassArgs = struct {
+        cmd: c.VkCommandBuffer,
+    };
+
+    pub fn acquireSwapchain(self: *VulkanContext) !void {
+        const logicalDevice = self.logicalDevice;
+        const imageAvailableSemaphore = self.syncObjects.imageAvailableSemaphore;
 
         // 3. Acquire an image from the swapchain
         var imageIndex: u32 = undefined;
@@ -231,6 +286,68 @@ pub const VulkanContext = struct {
             else => try vk.checkResult(acquire),
         }
         self.imageIndex = imageIndex;
+    }
+
+    pub fn presentSwpachain(self: *VulkanContext) !void {
+        const imageIndex = self.imageIndex orelse return error.NoImageIndex;
+        const swapchains = [_]c.VkSwapchainKHR{self.swapchain};
+        const signalSemaphores = [_]c.VkSemaphore{
+            self.swapchainImages[imageIndex].signalSemaphore,
+        };
+
+        var presentInfo = c.VkPresentInfoKHR{
+            .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = null,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &signalSemaphores,
+            .swapchainCount = 1,
+            .pSwapchains = &swapchains,
+            .pImageIndices = &imageIndex,
+            .pResults = null,
+        };
+        self.imageIndex = null;
+
+        const present = c.vkQueuePresentKHR(self.queue, &presentInfo);
+        switch (present) {
+            c.VK_SUCCESS => {},
+            c.VK_SUBOPTIMAL_KHR => std.log.warn(
+                "vkQueuePresentKHR: VK_SUBOPTIMAL_KHR (swapchain extent may be stale)",
+                .{},
+            ),
+            else => try vk.checkResult(present),
+        }
+    }
+
+    pub fn beginSwapchainPass(self: *VulkanContext, args: BeginSwpachainPassArgs) !void {
+        const imageIndex = self.imageIndex orelse return error.NoImageIndex;
+        const clearColor = [_]c.VkClearValue{
+            c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } },
+            c.VkClearValue{ .depthStencil = .{ .depth = 1, .stencil = 0 } },
+        };
+
+        return self.beginPass(.{
+            .cmd = args.cmd,
+            .renderPass = self.swapchainRenderPass,
+            .framebuffer = self.framebuffers[imageIndex],
+            .clearValues = clearColor[0..],
+            .extent = .{
+                .width = self.width,
+                .height = self.height,
+            },
+        });
+    }
+
+    pub fn endSwapchainPass(self: *VulkanContext) void {
+        self.endPass();
+    }
+
+    pub fn beginDraw(self: *VulkanContext) !c.VkCommandBuffer {
+        const logicalDevice = self.logicalDevice;
+        const inFlightFence = self.syncObjects.inFlightFence;
+
+        // 2. Wait for the previous frame to finish
+        try vk.checkResult(c.vkWaitForFences(logicalDevice, 1, &inFlightFence, c.VK_TRUE, std.math.maxInt(u64)));
+        try vk.checkResult(c.vkResetFences(logicalDevice, 1, &inFlightFence));
 
         // 3. Reset and record command buffer
         try vk.checkResult(c.vkResetCommandBuffer(self.commandBuffer, 0));
@@ -243,63 +360,11 @@ pub const VulkanContext = struct {
         };
         try vk.checkResult(c.vkBeginCommandBuffer(self.commandBuffer, &beginInfo));
 
-        // Begin render pass
-        const clearColor = [_]c.VkClearValue{
-            c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } },
-            c.VkClearValue{ .depthStencil = .{ .depth = 1, .stencil = 0 } },
-        };
-
-        var renderPassInfo = c.VkRenderPassBeginInfo{
-            .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .pNext = null,
-            .renderPass = self.renderPass,
-            .framebuffer = self.framebuffers[imageIndex],
-            .renderArea = .{
-                .offset = .{ .x = 0, .y = 0 },
-                .extent = c.VkExtent2D{
-                    .width = self.width,
-                    .height = self.height,
-                },
-            },
-            .clearValueCount = clearColor.len,
-            .pClearValues = &clearColor,
-        };
-
-        c.vkCmdBeginRenderPass(
-            self.commandBuffer,
-            &renderPassInfo,
-            c.VK_SUBPASS_CONTENTS_INLINE,
-        );
-
-        const viewport = c.VkViewport{
-            .x = 0.0,
-            .y = 0.0,
-            .width = @floatFromInt(self.width),
-            .height = @floatFromInt(self.height),
-            .minDepth = 0.0,
-            .maxDepth = 1.0,
-        };
-        c.vkCmdSetViewport(self.commandBuffer, 0, 1, &viewport);
-
-        const scissor = c.VkRect2D{
-            .offset = .{
-                .x = 0,
-                .y = 0,
-            },
-            .extent = .{
-                .width = self.width,
-                .height = self.height,
-            },
-        };
-        c.vkCmdSetScissor(self.commandBuffer, 0, 1, &scissor);
         return self.commandBuffer;
     }
 
     pub fn endDraw(self: *VulkanContext) !void {
-        c.vkCmdEndRenderPass(self.commandBuffer);
-
         const imageIndex = self.imageIndex orelse return error.NoImageIndex;
-
         try vk.checkResult(c.vkEndCommandBuffer(self.commandBuffer));
 
         const waitSemaphores = [_]c.VkSemaphore{
@@ -330,31 +395,6 @@ pub const VulkanContext = struct {
             &submitInfo,
             self.syncObjects.inFlightFence,
         ));
-
-        // 5. Present the image
-        const swapchains = [_]c.VkSwapchainKHR{self.swapchain};
-
-        var presentInfo = c.VkPresentInfoKHR{
-            .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext = null,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &signalSemaphores,
-            .swapchainCount = 1,
-            .pSwapchains = &swapchains,
-            .pImageIndices = &imageIndex,
-            .pResults = null,
-        };
-        self.imageIndex = null;
-
-        const present = c.vkQueuePresentKHR(self.queue, &presentInfo);
-        switch (present) {
-            c.VK_SUCCESS => {},
-            c.VK_SUBOPTIMAL_KHR => std.log.warn(
-                "vkQueuePresentKHR: VK_SUBOPTIMAL_KHR (swapchain extent may be stale)",
-                .{},
-            ),
-            else => try vk.checkResult(present),
-        }
     }
 
     pub fn resize(self: *VulkanContext, width: u32, height: u32) !void {
@@ -405,7 +445,7 @@ pub const VulkanContext = struct {
             self.logicalDevice,
             self.swapchainImages,
             depthImageViews,
-            self.renderPass,
+            self.swapchainRenderPass,
             extent.width,
             extent.height,
         );
@@ -452,7 +492,7 @@ pub const VulkanContext = struct {
             self.commandPool,
         );
         self.cleanupSwapchain();
-        rp.destroyRenderPass(self.logicalDevice, self.renderPass);
+        rp.destroyRenderPass(self.logicalDevice, self.swapchainRenderPass);
         c.vkDestroyDevice(self.logicalDevice, null);
         c.vkDestroySurfaceKHR(self.instance, self.surface, null);
         c.vkDestroyInstance(self.instance, null);

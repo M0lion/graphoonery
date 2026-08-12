@@ -43,10 +43,14 @@ pub fn main() !void {
 
     var context = try window.getVulkanContext(allocator);
 
-    var roundedRectanglePipeline = try RoundedRectanglePipeline.init(context);
+    var roundedRectanglePipeline = try RoundedRectanglePipeline.init(context, .{
+        .renderPass = context.swapchainRenderPass,
+    });
     defer roundedRectanglePipeline.deinit();
 
-    var drawingPipeline = try DrawingPipeline.init(context);
+    var drawingPipeline = try DrawingPipeline.init(context, .{
+        .renderPass = context.swapchainRenderPass,
+    });
     defer drawingPipeline.deinit();
 
     var x: f32 = 500;
@@ -71,6 +75,8 @@ pub fn main() !void {
             }
         }
         const cmd = try context.beginDraw();
+        try context.acquireSwapchain();
+        try context.beginSwapchainPass(.{ .cmd = cmd });
         uiContext.cmd = cmd;
 
         ui.drawRect(.{ .h = 50, .w = 50, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 4);
@@ -82,6 +88,8 @@ pub fn main() !void {
         });
 
         uiContext.cmd = null;
+
         try context.endDraw();
+        try context.presentSwpachain();
     }
 }

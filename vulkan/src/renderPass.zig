@@ -1,6 +1,9 @@
 const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
+const EnumFromC = @import("enumFromC.zig").EnumFromC;
+
+pub const AttachmentStoreOp = EnumFromC(c, "VK_ATTACHMENT_LOAD_OP_", c_uint);
 
 pub fn createRenderPass(
     logicalDevice: c.VkDevice,
@@ -10,7 +13,7 @@ pub fn createRenderPass(
         .flags = 0,
         .format = format,
         .samples = c.VK_SAMPLE_COUNT_1_BIT,
-        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .loadOp = @intFromEnum(AttachmentStoreOp.Clear),
         .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
         .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
         .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,

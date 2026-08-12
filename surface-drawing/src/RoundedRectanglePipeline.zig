@@ -26,7 +26,11 @@ pub const RoundedCornerPipeline = struct {
     fragmentShaderModule: c.VkShaderModule,
     vertexShaderModule: c.VkShaderModule,
 
-    pub fn init(vulkanContext: VulkanContext) !RoundedCornerPipeline {
+    pub const Config = struct {
+        renderPass: c.VkRenderPass,
+    };
+
+    pub fn init(vulkanContext: VulkanContext, config: Config) !RoundedCornerPipeline {
         const logicalDevice = vulkanContext.logicalDevice;
 
         var vertCreateInfo = c.VkShaderModuleCreateInfo{
@@ -55,9 +59,7 @@ pub const RoundedCornerPipeline = struct {
             .logicalDevice = logicalDevice,
             .vertShaderModule = vertShaderModule,
             .fragShaderModule = fragShaderModule,
-            .width = vulkanContext.width,
-            .height = vulkanContext.height,
-            .renderPass = vulkanContext.renderPass,
+            .renderPass = config.renderPass,
             .topology = pipe.Topology.TriangleStrip,
         });
 
