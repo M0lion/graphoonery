@@ -2,7 +2,7 @@ const std = @import("std");
 const c = @import("vk.zig").c;
 
 pub fn EnumFromC(comptime import: type, comptime prefix: []const u8, comptime Tag: type) type {
-    comptime var names: []const []const u8 = &.{};
+    comptime var names: []const [:0]const u8 = &.{};
     comptime var values: []const Tag = &.{};
 
     @setEvalBranchQuota(1_000_000); // Vulkan has a LOT of decls
@@ -23,14 +23,15 @@ pub fn EnumFromC(comptime import: type, comptime prefix: []const u8, comptime Ta
         }
         if (seen) continue;
 
-        names = names ++ &[_][]const u8{decl.name[prefix.len..]};
+        names = names ++ .{decl.name[prefix.len..]};
         values = values ++ &[_]Tag{@intCast(v)};
     }
 
     comptime var fields: []const std.builtin.Type.EnumField = &.{};
     inline for (names, values) |n, val| {
+        //@compileLog(n);
         fields = fields ++ &[_]std.builtin.Type.EnumField{
-            .{ .name = n, .value = val }, // .name must be [:0]const u8
+            .{ .name = n, .value = val }, // .name must be [:0]const u8enuf
         };
     }
     return @Type(.{ .@"enum" = .{

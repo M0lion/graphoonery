@@ -89,6 +89,7 @@ pub fn main() !void {
 
         uiContext.cmd = null;
 
+        context.endSwapchainPass();
         try context.endDraw();
         try context.presentSwpachain();
     }

@@ -2,8 +2,28 @@ const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
 const EnumFromC = @import("enumFromC.zig").EnumFromC;
+const i = @import("images.zig");
+const ImageLayout = i.ImageLayout;
 
-pub const AttachmentStoreOp = EnumFromC(c, "VK_ATTACHMENT_LOAD_OP_", c_uint);
+pub const AttachmentLoadOp = enum(c_uint) {
+    Clear = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+    Load = c.VK_ATTACHMENT_LOAD_OP_LOAD,
+    DontCare = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+};
+
+pub const AttachmentStoreOp = enum(c_uint) {
+    Store = c.VK_ATTACHMENT_STORE_OP_STORE,
+    DontCare = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+};
+
+pub const Attachment = struct {
+    loadOp: AttachmentLoadOp,
+    storeOp: AttachmentStoreOp,
+    stenciilLoadOp: AttachmentLoadOp,
+    stencilStoreOp: AttachmentStoreOp,
+    initialLayout: ImageLayout,
+    finalLayout: ImageLayout,
+};
 
 pub fn createRenderPass(
     logicalDevice: c.VkDevice,
@@ -13,12 +33,12 @@ pub fn createRenderPass(
         .flags = 0,
         .format = format,
         .samples = c.VK_SAMPLE_COUNT_1_BIT,
-        .loadOp = @intFromEnum(AttachmentStoreOp.Clear),
-        .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
-        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .loadOp = @intFromEnum(AttachmentLoadOp.Clear),
+        .storeOp = @intFromEnum(AttachmentStoreOp.Store),
+        .stencilLoadOp = @intFromEnum(AttachmentLoadOp.DontCare),
+        .stencilStoreOp = @intFromEnum(AttachmentStoreOp.DontCare),
+        .initialLayout = @intFromEnum(ImageLayout.Undefined),
+        .finalLayout = @intFromEnum(ImageLayout.PresentSrc),
     };
 
     var colorAttachmentRef = c.VkAttachmentReference{

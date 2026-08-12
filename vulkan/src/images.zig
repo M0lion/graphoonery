@@ -9,6 +9,11 @@ pub const ImageResult = struct {
     imageView: c.VkImageView,
 };
 
+pub const ImageLayout = enum(c_uint) {
+    Undefined = c.VK_IMAGE_LAYOUT_UNDEFINED,
+    PresentSrc = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+};
+
 pub fn createDepthImages(
     allocator: std.mem.Allocator,
     logicalDevice: c.VkDevice,
