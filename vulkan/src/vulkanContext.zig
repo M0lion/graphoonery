@@ -13,6 +13,7 @@ const rp = @import("renderPass.zig");
 const sync = @import("sync.zig");
 const command = @import("command.zig");
 const img = @import("images.zig");
+const descriptor = @import("descriptor.zig");
 
 pub const VulkanContextError = error{
     CouldNotFindPDevice,
@@ -48,6 +49,7 @@ pub const VulkanContext = struct {
     commandBuffer: c.VkCommandBuffer,
     imageIndex: ?u32 = null,
     depthImageResults: []img.ImageResult,
+    descriptorPool: c.VkDescriptorPool,
 
     /// Creates an instance and a surface from native window handles, then
     /// builds the context. Used by the native window backends (custom Cocoa
@@ -143,7 +145,31 @@ pub const VulkanContext = struct {
         );
 
         std.log.debug("Creating render pass", .{});
-        const renderPass = try rp.createRenderPass(logicalDevice, surfaceFormat.format);
+        const renderPass = try rp.createRenderPass(
+            logicalDevice,
+            .{
+                .colorAttachment = .{
+                    .format = surfaceFormat.format,
+                    .loadOp = rp.AttachmentLoadOp.Clear,
+                    .storeOp = rp.AttachmentStoreOp.Store,
+                    .stenciilLoadOp = rp.AttachmentLoadOp.DontCare,
+                    .stencilStoreOp = rp.AttachmentStoreOp.DontCare,
+                    .initialLayout = img.ImageLayout.Undefined,
+                    .finalLayout = img.ImageLayout.PresentSrc,
+                    .sampleCount = rp.SampleCount.Count_1,
+                },
+                .depthAttachment = .{
+                    .format = c.VK_FORMAT_D32_SFLOAT,
+                    .loadOp = rp.AttachmentLoadOp.Clear,
+                    .storeOp = rp.AttachmentStoreOp.DontCare,
+                    .stenciilLoadOp = rp.AttachmentLoadOp.DontCare,
+                    .stencilStoreOp = rp.AttachmentStoreOp.DontCare,
+                    .initialLayout = img.ImageLayout.Undefined,
+                    .finalLayout = img.ImageLayout.DepthStencilAttachmentOptimal,
+                    .sampleCount = rp.SampleCount.Count_1,
+                },
+            },
+        );
 
         const depthImageResult = try img.createDepthImages(allocator, logicalDevice, physicalDevice, extent.width, extent.height, swapchainImages.len);
         var depthImageViews = try allocator.alloc(c.VkImageView, depthImageResult.len);
@@ -177,6 +203,8 @@ pub const VulkanContext = struct {
 
         const syncObjects = try sync.createSyncObjects(logicalDevice);
 
+        const descriptorPool = try descriptor.createDescriptorPool(logicalDevice);
+
         return VulkanContext{
             .allocator = allocator,
             .instance = instance,
@@ -197,13 +225,14 @@ pub const VulkanContext = struct {
             .commandPool = commandPool,
             .commandBuffer = commandBuffer,
             .depthImageResults = depthImageResult,
+            .descriptorPool = descriptorPool,
         };
     }
 
     pub const BeginPassArgs = struct {
         cmd: c.VkCommandBuffer,
         framebuffer: c.VkFramebuffer,
-        clearValues: []const c.VkClearValue,
+        clearValues: ?[]const c.VkClearValue,
         extent: c.VkExtent2D,
         renderPass: c.VkRenderPass,
     };
@@ -222,8 +251,8 @@ pub const VulkanContext = struct {
                     .height = self.height,
                 },
             },
-            .clearValueCount = @intCast(args.clearValues.len),
-            .pClearValues = args.clearValues.ptr,
+            .clearValueCount = if (args.clearValues) |cv| @as(u32, @intCast(cv.len)) else 0,
+            .pClearValues = if (args.clearValues) |cv| cv.ptr else null,
         };
 
         c.vkCmdBeginRenderPass(

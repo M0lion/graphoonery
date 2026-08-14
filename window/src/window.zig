@@ -25,6 +25,8 @@ pub const Window = struct {
     window: *c.struct_SDL_Window,
     input: in.Input,
     windowShouldClose: bool = false,
+    width: u23,
+    height: u32,
 
     pub fn init(width: u32, height: u32) Window {
         _ = c.SDL_SetHint(c.SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -40,6 +42,8 @@ pub const Window = struct {
         return Window{
             .window = window,
             .input = input,
+            .width = @intCast(width),
+            .height = @intCast(height),
         };
     }
 
@@ -58,6 +62,9 @@ pub const Window = struct {
         if (!c.SDL_GetWindowSize(self.window, &width, &height)) {
             @panic("Could not get window size");
         }
+
+        self.width = @intCast(width);
+        self.height = @intCast(height);
 
         var e: c.SDL_Event = undefined;
         var events: [64]Event = undefined;

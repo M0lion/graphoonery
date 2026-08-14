@@ -36,7 +36,7 @@ pub const ColoredVertexPipeline = struct {
 
         const descriptorSetLayout = try descriptor.createDescriptorSetLayout(allocator, logicalDevice, &descriptorSetLayouts);
 
-        const descriptorPool = try descriptor.createDescriptorPool(logicalDevice);
+        const descriptorPool = vulkanContext.descriptorPool;
 
         var vertCreateInfo = c.VkShaderModuleCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,

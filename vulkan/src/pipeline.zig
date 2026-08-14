@@ -114,7 +114,7 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .dstColorBlendFactor = c.VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .colorBlendOp = c.VK_BLEND_OP_ADD,
         .srcAlphaBlendFactor = c.VK_BLEND_FACTOR_ONE,
-        .dstAlphaBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+        .dstAlphaBlendFactor = c.VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .alphaBlendOp = c.VK_BLEND_OP_ADD,
     };
 

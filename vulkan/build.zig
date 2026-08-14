@@ -53,6 +53,8 @@ pub fn compileShaders(
         .{ .path = "shaders/roundedCornerRect.frag", .name = "roundedCornerRect_frag_spv" },
         .{ .path = "shaders/drawing.vert", .name = "drawing_vert_spv" },
         .{ .path = "shaders/drawing.frag", .name = "drawing_frag_spv" },
+        .{ .path = "shaders/canvas.vert", .name = "canvas_vert_spv" },
+        .{ .path = "shaders/canvas.frag", .name = "canvas_frag_spv" },
     };
 
     const wf = b.addWriteFiles();

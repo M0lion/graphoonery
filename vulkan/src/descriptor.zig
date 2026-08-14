@@ -1,12 +1,16 @@
 const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
+const img = @import("images.zig");
+const ImageLayout = img.ImageLayout;
 
 pub const DescriptorType = enum(c_uint) {
     UniformBuffer = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    CombinedImageSampler = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 };
 pub const ShaderStage = enum(u32) {
     Vertex = c.VK_SHADER_STAGE_VERTEX_BIT,
+    Fragment = c.VK_SHADER_STAGE_FRAGMENT_BIT,
 };
 pub const DescriptorSetLayoutBinding = struct {
     descriptorType: DescriptorType,
@@ -52,17 +56,23 @@ pub fn destroyDescriptorSetLayout(
 }
 
 pub fn createDescriptorPool(logicalDevice: c.VkDevice) !c.VkDescriptorPool {
-    var poolSize = c.VkDescriptorPoolSize{
-        .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 10,
+    var sizes = [_]c.VkDescriptorPoolSize{
+        c.VkDescriptorPoolSize{
+            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 10,
+        },
+        c.VkDescriptorPoolSize{
+            .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 10,
+        },
     };
 
     var poolInfo = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .pNext = null,
         .flags = c.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-        .poolSizeCount = 1,
-        .pPoolSizes = &poolSize,
+        .poolSizeCount = sizes.len,
+        .pPoolSizes = &sizes,
         .maxSets = 10,
     };
 
@@ -107,30 +117,60 @@ pub fn allocateDescriptorSet(
     return descriptorSet;
 }
 
+pub const DescriptorData = union(DescriptorType) {
+    UniformBuffer: struct {
+        buffer: c.VkBuffer,
+        size: c.VkDeviceSize,
+    },
+    CombinedImageSampler: struct {
+        imageView: c.VkImageView,
+        sampler: c.VkSampler,
+        layout: ImageLayout = .ShaderReadOnlyOptimal,
+    },
+};
+
 pub fn updateDescriptorSet(
     logicalDevice: c.VkDevice,
     descriptorSet: c.VkDescriptorSet,
-    buffer: c.VkBuffer,
-    bufferSize: c.VkDeviceSize,
+    binding: u32,
+    data: DescriptorData,
 ) void {
-    var bufferInfo = c.VkDescriptorBufferInfo{
-        .buffer = buffer,
-        .offset = 0,
-        .range = bufferSize,
-    };
+    // Both info structs are function-scope so they outlive the
+    // vkUpdateDescriptorSets call that points at them.
+    var bufferInfo: c.VkDescriptorBufferInfo = undefined;
+    var imageInfo: c.VkDescriptorImageInfo = undefined;
 
     var descriptorWrite = c.VkWriteDescriptorSet{
         .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .pNext = null,
         .dstSet = descriptorSet,
-        .dstBinding = 0,
+        .dstBinding = binding,
         .dstArrayElement = 0,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorType = @intFromEnum(std.meta.activeTag(data)),
         .descriptorCount = 1,
-        .pBufferInfo = &bufferInfo,
+        .pBufferInfo = null,
         .pImageInfo = null,
         .pTexelBufferView = null,
     };
+
+    switch (data) {
+        .UniformBuffer => |ub| {
+            bufferInfo = .{
+                .buffer = ub.buffer,
+                .offset = 0,
+                .range = ub.size,
+            };
+            descriptorWrite.pBufferInfo = &bufferInfo;
+        },
+        .CombinedImageSampler => |cis| {
+            imageInfo = .{
+                .sampler = cis.sampler,
+                .imageView = cis.imageView,
+                .imageLayout = @intFromEnum(cis.layout),
+            };
+            descriptorWrite.pImageInfo = &imageInfo;
+        },
+    }
 
     c.vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, null);
 }
