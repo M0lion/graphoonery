@@ -22,6 +22,7 @@ pub const DrawingPipeline = struct {
     context: VulkanContext,
     fragmentShaderModule: c.VkShaderModule,
     vertexShaderModule: c.VkShaderModule,
+    renderPass: c.VkRenderPass,
 
     pub const Config = struct {
         renderPass: c.VkRenderPass,
@@ -66,6 +67,7 @@ pub const DrawingPipeline = struct {
             .context = vulkanContext,
             .fragmentShaderModule = fragShaderModule,
             .vertexShaderModule = vertShaderModule,
+            .renderPass = config.renderPass,
         };
     }
 

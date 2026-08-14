@@ -6,6 +6,7 @@ const RoundedRectanglePipeline = @import("RoundedRectanglePipeline.zig").Rounded
 const DrawingPipeline = @import("DrawingPipeline.zig").DrawingPipeline;
 const Ui = @import("ui");
 const math = @import("math");
+const rp = vulkan.renderPass;
 
 const Context = struct {
     pipeline: RoundedRectanglePipeline,
@@ -48,10 +49,50 @@ pub fn main() !void {
     });
     defer roundedRectanglePipeline.deinit();
 
+    const canvasRenderPass = try rp.createRenderPass(
+        context.logicalDevice,
+        .{
+            .colorAttachment = .{
+                .format = context.swapchainImageFormat,
+                .initialLayout = vulkan.images.ImageLayout.ShaderReadOnlyOptimal,
+                .finalLayout = vulkan.images.ImageLayout.ShaderReadOnlyOptimal,
+                .loadOp = rp.AttachmentLoadOp.Load,
+                .storeOp = rp.AttachmentStoreOp.Store,
+                .stenciilLoadOp = rp.AttachmentLoadOp.DontCare,
+                .stencilStoreOp = rp.AttachmentStoreOp.DontCare,
+                .sampleCount = rp.SampleCount.Count_1,
+            },
+        },
+    );
+
     var drawingPipeline = try DrawingPipeline.init(context, .{
-        .renderPass = context.swapchainRenderPass,
+        .renderPass = canvasRenderPass,
     });
     defer drawingPipeline.deinit();
+
+    const drawingImage = try vulkan.images.createImage(
+        context.logicalDevice,
+        context.physicalDevice,
+        .{
+            .width = window.width,
+            .height = window.height,
+            .format = context.swapchainImageFormat,
+            .initialLayout = vulkan.images.ImageLayout.Undefined,
+            .usage = vulkan.vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | vulkan.vk.c.VK_IMAGE_USAGE_SAMPLED_BIT,
+        },
+    );
+
+    const attachments = [_]vulkan.vk.c.VkImageView{
+        drawingImage.imageView,
+    };
+
+    const drawingBuffer = try vulkan.framebuffer.createFramebuffer(
+        context.logicalDevice,
+        attachments[0..],
+        drawingPipeline.renderPass,
+        window.width,
+        window.height,
+    );
 
     var x: f32 = 500;
     var y: f32 = 500;
@@ -63,6 +104,7 @@ pub fn main() !void {
     };
     var ui = Ui.Ui(Context, .{ .drawRect = drawRect }).init(allocator, &uiContext);
 
+    var draw: bool = false;
     while (!window.shouldClose()) {
         for (window.pollEvents()) |event| {
             switch (event) {
@@ -70,22 +112,40 @@ pub fn main() !void {
                     x = pos.x();
                     y = pos.y();
                     std.debug.print("Processed event: ({},{})\n", .{ x, y });
+                    draw = true;
                 },
                 else => {},
             }
         }
         const cmd = try context.beginDraw();
         try context.acquireSwapchain();
-        try context.beginSwapchainPass(.{ .cmd = cmd });
-        uiContext.cmd = cmd;
-
-        ui.drawRect(.{ .h = 50, .w = 50, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 4);
+        const clearColor = [_]vulkan.vk.c.VkClearValue{
+            vulkan.vk.c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } },
+            vulkan.vk.c.VkClearValue{ .depthStencil = .{ .depth = 1, .stencil = 0 } },
+        };
+        try context.beginPass(
+            .{
+                .cmd = cmd,
+                .renderPass = drawingPipeline.renderPass,
+                .clearValues = clearColor[0..],
+                .extent = .{
+                    .width = window.width,
+                    .height = window.height,
+                },
+                .framebuffer = drawingBuffer,
+            },
+        );
         try drawingPipeline.draw(cmd, .{
             .center = math.Vec2.init(.{ x, y }),
             .fill = math.Vec4.init(.{ 1, 1, 1, 1 }),
             .radius = 50,
             .resolution = math.Vec2.init(.{ 1920, 1280 }),
         });
+        context.endPass();
+        try context.beginSwapchainPass(.{ .cmd = cmd });
+        uiContext.cmd = cmd;
+
+        ui.drawRect(.{ .h = 50, .w = 50, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 4);
 
         uiContext.cmd = null;
 

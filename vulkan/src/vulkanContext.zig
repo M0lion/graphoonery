@@ -143,7 +143,31 @@ pub const VulkanContext = struct {
         );
 
         std.log.debug("Creating render pass", .{});
-        const renderPass = try rp.createRenderPass(logicalDevice, surfaceFormat.format);
+        const renderPass = try rp.createRenderPass(
+            logicalDevice,
+            .{
+                .colorAttachment = .{
+                    .format = surfaceFormat.format,
+                    .loadOp = rp.AttachmentLoadOp.Clear,
+                    .storeOp = rp.AttachmentStoreOp.Store,
+                    .stenciilLoadOp = rp.AttachmentLoadOp.DontCare,
+                    .stencilStoreOp = rp.AttachmentStoreOp.DontCare,
+                    .initialLayout = img.ImageLayout.Undefined,
+                    .finalLayout = img.ImageLayout.PresentSrc,
+                    .sampleCount = rp.SampleCount.Count_1,
+                },
+                .depthAttachment = .{
+                    .format = c.VK_FORMAT_D32_SFLOAT,
+                    .loadOp = rp.AttachmentLoadOp.Clear,
+                    .storeOp = rp.AttachmentStoreOp.DontCare,
+                    .stenciilLoadOp = rp.AttachmentLoadOp.DontCare,
+                    .stencilStoreOp = rp.AttachmentStoreOp.DontCare,
+                    .initialLayout = img.ImageLayout.Undefined,
+                    .finalLayout = img.ImageLayout.DepthStencilAttachmentOptimal,
+                    .sampleCount = rp.SampleCount.Count_1,
+                },
+            },
+        );
 
         const depthImageResult = try img.createDepthImages(allocator, logicalDevice, physicalDevice, extent.width, extent.height, swapchainImages.len);
         var depthImageViews = try allocator.alloc(c.VkImageView, depthImageResult.len);

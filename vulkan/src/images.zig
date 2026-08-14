@@ -2,6 +2,7 @@ const std = @import("std");
 const vk = @import("vk.zig");
 const c = vk.c;
 const mem = @import("memory.zig");
+const iv = @import("imageView.zig");
 
 pub const ImageResult = struct {
     image: c.VkImage,
@@ -9,10 +10,63 @@ pub const ImageResult = struct {
     imageView: c.VkImageView,
 };
 
-pub const ImageLayout = enum(c_uint) {
+pub const ImageLayout = enum(c.VkImageLayout) {
     Undefined = c.VK_IMAGE_LAYOUT_UNDEFINED,
     PresentSrc = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+    DepthStencilAttachmentOptimal = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    ShaderReadOnlyOptimal = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 };
+
+pub const CreateImageArgs = struct {
+    width: u32,
+    height: u32,
+    format: c.VkFormat,
+    initialLayout: ImageLayout,
+    usage: c.VkImageUsageFlags,
+};
+
+pub fn createImage(
+    logicalDevice: c.VkDevice,
+    physicalDevice: c.VkPhysicalDevice,
+    args: CreateImageArgs,
+) !ImageResult {
+    const createInfo = c.VkImageCreateInfo{
+        .pNext = null,
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .extent = .{
+            .width = args.width,
+            .height = args.height,
+            .depth = 1,
+        },
+        .format = args.format,
+        .initialLayout = @intFromEnum(args.initialLayout),
+        .imageType = c.VK_IMAGE_TYPE_2D,
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+        .flags = 0,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        .usage = args.usage,
+    };
+
+    var image: c.VkImage = undefined;
+    try vk.checkResult(c.vkCreateImage(logicalDevice, &createInfo, null, &image));
+
+    const memory = try mem.allocateImageMemory(
+        logicalDevice,
+        physicalDevice,
+        image,
+    );
+
+    const imageView = try iv.createImageView(logicalDevice, image, args.format);
+
+    return .{
+        .image = image,
+        .memory = memory,
+        .imageView = imageView,
+    };
+}
 
 pub fn createDepthImages(
     allocator: std.mem.Allocator,

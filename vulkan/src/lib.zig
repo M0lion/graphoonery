@@ -7,3 +7,7 @@ pub const buffer = @import("buffer.zig");
 pub const swapchain = @import("swapchain.zig");
 pub const command = @import("command.zig");
 pub const sync = @import("sync.zig");
+pub const renderPass = @import("renderPass.zig");
+pub const images = @import("images.zig");
+pub const framebuffer = @import("framebuffer.zig");
+pub const imageView = @import("imageView.zig");

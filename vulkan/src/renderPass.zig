@@ -16,6 +16,10 @@ pub const AttachmentStoreOp = enum(c_uint) {
     DontCare = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
 };
 
+pub const SampleCount = enum(c_uint) {
+    Count_1 = c.VK_SAMPLE_COUNT_1_BIT,
+};
+
 pub const Attachment = struct {
     loadOp: AttachmentLoadOp,
     storeOp: AttachmentStoreOp,
@@ -23,46 +27,54 @@ pub const Attachment = struct {
     stencilStoreOp: AttachmentStoreOp,
     initialLayout: ImageLayout,
     finalLayout: ImageLayout,
+    sampleCount: SampleCount,
+    format: c.VkFormat,
+
+    pub fn getVkAttachmentDescription(self: *const Attachment) c.VkAttachmentDescription {
+        return c.VkAttachmentDescription{
+            .flags = 0,
+            .format = self.format,
+            .samples = @intFromEnum(self.sampleCount),
+            .loadOp = @intFromEnum(self.loadOp),
+            .storeOp = @intFromEnum(self.storeOp),
+            .stencilLoadOp = @intFromEnum(self.stenciilLoadOp),
+            .stencilStoreOp = @intFromEnum(self.stencilStoreOp),
+            .initialLayout = @intFromEnum(self.initialLayout),
+            .finalLayout = @intFromEnum(self.finalLayout),
+        };
+    }
+};
+
+pub const RenderPassConfig = struct {
+    colorAttachment: Attachment,
+    depthAttachment: ?Attachment = null,
 };
 
 pub fn createRenderPass(
     logicalDevice: c.VkDevice,
-    format: c.VkFormat,
+    config: RenderPassConfig,
 ) !c.VkRenderPass {
-    const colorAttachment = c.VkAttachmentDescription{
-        .flags = 0,
-        .format = format,
-        .samples = c.VK_SAMPLE_COUNT_1_BIT,
-        .loadOp = @intFromEnum(AttachmentLoadOp.Clear),
-        .storeOp = @intFromEnum(AttachmentStoreOp.Store),
-        .stencilLoadOp = @intFromEnum(AttachmentLoadOp.DontCare),
-        .stencilStoreOp = @intFromEnum(AttachmentStoreOp.DontCare),
-        .initialLayout = @intFromEnum(ImageLayout.Undefined),
-        .finalLayout = @intFromEnum(ImageLayout.PresentSrc),
-    };
+    // Attachment 0 is always color; attachment 1 is depth when configured.
+    // Everything Vulkan reads must outlive the vkCreateRenderPass call, so
+    // these are plain function-scope locals rather than slices of temporaries.
+    var attachments: [2]c.VkAttachmentDescription = undefined;
+    attachments[0] = config.colorAttachment.getVkAttachmentDescription();
 
     var colorAttachmentRef = c.VkAttachmentReference{
         .attachment = 0,
         .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
 
-    const depthAttachment = c.VkAttachmentDescription{
-        .flags = 0,
-        .format = c.VK_FORMAT_D32_SFLOAT, // or whatever depth format you chose
-        .samples = c.VK_SAMPLE_COUNT_1_BIT,
-        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    };
-
-    // 2. Create the depth attachment reference
     var depthAttachmentRef = c.VkAttachmentReference{
         .attachment = 1, // index 1 (color is 0)
         .layout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
+
+    var attachmentCount: u32 = 1;
+    if (config.depthAttachment) |depthAttachmentConfig| {
+        attachments[1] = depthAttachmentConfig.getVkAttachmentDescription();
+        attachmentCount = 2;
+    }
 
     var subpass = c.VkSubpassDescription{
         .flags = 0,
@@ -72,21 +84,16 @@ pub fn createRenderPass(
         .inputAttachmentCount = 0,
         .pInputAttachments = null,
         .pResolveAttachments = null,
-        .pDepthStencilAttachment = &depthAttachmentRef,
+        .pDepthStencilAttachment = if (config.depthAttachment != null) &depthAttachmentRef else null,
         .preserveAttachmentCount = 0,
         .pPreserveAttachments = null,
-    };
-
-    const attachments = [_]c.VkAttachmentDescription{
-        colorAttachment,
-        depthAttachment,
     };
 
     var createRenderPassInfo = c.VkRenderPassCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .attachmentCount = 2,
+        .attachmentCount = attachmentCount,
         .pAttachments = &attachments,
         .subpassCount = 1,
         .pSubpasses = &subpass,
