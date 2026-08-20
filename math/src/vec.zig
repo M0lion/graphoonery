@@ -178,6 +178,7 @@ pub const Vec4 = Vec(4, f32);
 
 pub const IVec2 = Vec(2, i32);
 pub const IVec3 = Vec(3, i32);
+pub const IVec4 = Vec(4, i32);
 
 // ---------- tests ----------
 

@@ -5,35 +5,10 @@ const vulkan = @import("vulkan");
 const RoundedRectanglePipeline = @import("RoundedRectanglePipeline.zig").RoundedCornerPipeline;
 const DrawingPipeline = @import("DrawingPipeline.zig").DrawingPipeline;
 const CanvasPipeline = @import("CanvasPipeline.zig").CanvasPipeline;
-const Ui = @import("ui");
+const Ui = @import("ui.zig");
 const math = @import("math");
 const rp = vulkan.renderPass;
-
-const Context = struct {
-    pipeline: RoundedRectanglePipeline,
-    cmd: ?vulkan.vk.c.VkCommandBuffer,
-    resolution: math.Vec2,
-};
-
-fn drawRect(
-    context: *Context,
-    rect: Ui.Rect,
-    r: f32,
-    border: f32,
-    color: Ui.Color,
-    borderColor: Ui.Color,
-    _: ?Ui.Rect,
-) void {
-    context.pipeline.draw(context.cmd.?, .{
-        .border = border,
-        .border_color = math.Vec4.init(.{ borderColor[0], borderColor[1], borderColor[2], borderColor[3] }),
-        .center = math.Vec2.init(.{ rect.x + (rect.w / 2), rect.y + (rect.h / 2) }),
-        .fill = math.Vec4.init(.{ color[0], color[1], color[2], color[3] }),
-        .half_size = math.Vec2.init(.{ rect.w / 2, rect.h / 2 }),
-        .radius = r,
-        .resolution = context.resolution,
-    }) catch @panic("fail draw");
-}
+const ColorPicker = @import("ColorPicker.zig");
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -41,7 +16,7 @@ pub fn main() !void {
 
     var window = Window.init(1920, 1280);
     defer window.deinit();
-    _ = Window.hideCursor();
+    //_ = Window.hideCursor();
 
     var context = try window.getVulkanContext(allocator);
 
@@ -105,15 +80,29 @@ pub fn main() !void {
     var x: f32 = 500;
     var y: f32 = 500;
 
-    var uiContext = Context{
+    var uiContext = Ui.Context{
         .cmd = null,
         .pipeline = roundedRectanglePipeline,
         .resolution = math.Vec2.init(.{ @floatFromInt(context.width), @floatFromInt(context.height) }),
     };
-    var ui = Ui.Ui(Context, .{ .drawRect = drawRect }).init(allocator, &uiContext);
+    var ui = Ui.Ui.init(allocator, &uiContext);
+
+    const colors = [_]math.Vec4{
+        math.Vec4.init(.{ 0.0, 0.0, 0.0, 1.0 }), // black
+        math.Vec4.init(.{ 1.0, 1.0, 1.0, 1.0 }), // white
+        math.Vec4.init(.{ 1.0, 0.0, 0.0, 1.0 }), // red
+        math.Vec4.init(.{ 0.0, 1.0, 0.0, 1.0 }), // green
+        math.Vec4.init(.{ 0.0, 0.0, 1.0, 1.0 }), // blue
+        math.Vec4.init(.{ 1.0, 1.0, 0.0, 1.0 }), // yellow
+        math.Vec4.init(.{ 1.0, 0.0, 1.0, 1.0 }), // magenta
+        math.Vec4.init(.{ 0.0, 1.0, 1.0, 1.0 }), // cyan
+    };
+    var pickedColor: usize = 0;
+    var clicked = false;
 
     var draw: bool = false;
     while (!window.shouldClose()) {
+        clicked = false;
         for (window.pollEvents()) |event| {
             switch (event) {
                 w.Event.Touch, w.Event.MouseDown, w.Event.MouseUp, w.Event.TouchMove, w.Event.MouseMove => |pos| {
@@ -123,7 +112,8 @@ pub fn main() !void {
                     switch (tag) {
                         w.Event.MouseDown, w.Event.Touch => {
                             draw = true;
-                            //std.debug.print("Drawing: {s}\n", .{@tagName(tag)});
+                            clicked = true;
+                            std.debug.print("Clicked\n", .{});
                         },
                         w.Event.MouseUp => {
                             draw = false;
@@ -151,17 +141,30 @@ pub fn main() !void {
             );
             try drawingPipeline.draw(cmd, .{
                 .center = math.Vec2.init(.{ x, y }),
-                .fill = math.Vec4.init(.{ 1, 1, 1, 1 }),
+                .fill = math.Vec4.init(colors[pickedColor].data),
                 .radius = 50,
                 .resolution = math.Vec2.init(.{ 1920, 1280 }),
             });
             context.endPass();
         }
         try context.beginSwapchainPass(.{ .cmd = cmd });
-        canvasPipeline.draw(cmd, canvasDescriptor);
         uiContext.cmd = cmd;
+        ui.drawRect(.{ .h = 50, .w = 200, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 25);
+        pickedColor = ColorPicker.drawColorPicker(
+            &ui,
+            .{
+                .clicked = clicked,
+                .pos = .init(.{ @intFromFloat(x), @intFromFloat(y) }),
+            },
+            .{
+                .pos = .init(.{ -960, 100 }),
+                .picked = pickedColor,
+                .colors = &colors,
+                .size = .init(.{ 1000, 50 }),
+            },
+        );
 
-        ui.drawRect(.{ .h = 50, .w = 50, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 4);
+        canvasPipeline.draw(cmd, canvasDescriptor);
 
         uiContext.cmd = null;
 
