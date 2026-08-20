@@ -97,8 +97,8 @@ pub const Window = struct {
                 c.SDL_EVENT_FINGER_DOWN => {
                     std.debug.print("Raw FINGER_DOWN: ({},{}) - ({},{})\n", .{ e.tfinger.x, e.tfinger.y, width, height });
                     events[eventCount] = Event{ .Touch = math.Vec2.init(.{
-                        (e.tfinger.x * @as(f32, @floatFromInt(width))) - 25,
-                        (e.tfinger.y * @as(f32, @floatFromInt(height))) - 25,
+                        (e.tfinger.x * @as(f32, @floatFromInt(width))),
+                        (e.tfinger.y * @as(f32, @floatFromInt(height))),
                     }) };
                     eventCount += 1;
                 },
