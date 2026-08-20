@@ -116,40 +116,47 @@ pub fn main() !void {
     while (!window.shouldClose()) {
         for (window.pollEvents()) |event| {
             switch (event) {
-                w.Event.Touch, w.Event.Click, w.Event.TouchMove => |pos| {
+                w.Event.Touch, w.Event.MouseDown, w.Event.MouseUp, w.Event.TouchMove, w.Event.MouseMove => |pos| {
                     x = pos.x();
                     y = pos.y();
-                    std.debug.print("Processed event: ({},{})\n", .{ x, y });
-                    draw = true;
+                    const tag = std.meta.activeTag(event);
+                    switch (tag) {
+                        w.Event.MouseDown, w.Event.Touch => {
+                            draw = true;
+                            //std.debug.print("Drawing: {s}\n", .{@tagName(tag)});
+                        },
+                        w.Event.MouseUp => {
+                            draw = false;
+                        },
+                        else => {},
+                    }
                 },
                 else => {},
             }
         }
         const cmd = try context.beginDraw();
         try context.acquireSwapchain();
-        // const clearColor = [_]vulkan.vk.c.VkClearValue{
-        //     vulkan.vk.c.VkClearValue{ .color = .{ .float32 = [_]f32{ 0.0, 0.31, 0.8, 1.0 } } },
-        //     vulkan.vk.c.VkClearValue{ .depthStencil = .{ .depth = 1, .stencil = 0 } },
-        // };
-        try context.beginPass(
-            .{
-                .cmd = cmd,
-                .renderPass = drawingPipeline.renderPass,
-                .clearValues = null,
-                .extent = .{
-                    .width = window.width,
-                    .height = window.height,
+        if (draw) {
+            try context.beginPass(
+                .{
+                    .cmd = cmd,
+                    .renderPass = drawingPipeline.renderPass,
+                    .clearValues = null,
+                    .extent = .{
+                        .width = window.width,
+                        .height = window.height,
+                    },
+                    .framebuffer = drawingBuffer,
                 },
-                .framebuffer = drawingBuffer,
-            },
-        );
-        try drawingPipeline.draw(cmd, .{
-            .center = math.Vec2.init(.{ x, y }),
-            .fill = math.Vec4.init(.{ 1, 1, 1, 1 }),
-            .radius = 50,
-            .resolution = math.Vec2.init(.{ 1920, 1280 }),
-        });
-        context.endPass();
+            );
+            try drawingPipeline.draw(cmd, .{
+                .center = math.Vec2.init(.{ x, y }),
+                .fill = math.Vec4.init(.{ 1, 1, 1, 1 }),
+                .radius = 50,
+                .resolution = math.Vec2.init(.{ 1920, 1280 }),
+            });
+            context.endPass();
+        }
         try context.beginSwapchainPass(.{ .cmd = cmd });
         canvasPipeline.draw(cmd, canvasDescriptor);
         uiContext.cmd = cmd;

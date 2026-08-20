@@ -10,14 +10,18 @@ const keys = @import("keys.zig");
 pub const EventType = enum {
     Touch,
     TouchMove,
-    Click,
+    MouseDown,
+    MouseUp,
+    MouseMove,
     KeyDown,
 };
 
 pub const Event = union(EventType) {
     Touch: math.Vec2,
     TouchMove: math.Vec2,
-    Click: math.Vec2,
+    MouseDown: math.Vec2,
+    MouseUp: math.Vec2,
+    MouseMove: math.Vec2,
     KeyDown: keys.Key,
 };
 
@@ -88,7 +92,21 @@ pub const Window = struct {
                     continue;
                 },
                 c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
-                    events[eventCount] = Event{ .Click = math.Vec2.init(.{
+                    events[eventCount] = Event{ .MouseDown = math.Vec2.init(.{
+                        e.button.x,
+                        e.button.y,
+                    }) };
+                    eventCount += 1;
+                },
+                c.SDL_EVENT_MOUSE_BUTTON_UP => {
+                    events[eventCount] = Event{ .MouseUp = math.Vec2.init(.{
+                        e.button.x,
+                        e.button.y,
+                    }) };
+                    eventCount += 1;
+                },
+                c.SDL_EVENT_MOUSE_MOTION => {
+                    events[eventCount] = Event{ .MouseMove = math.Vec2.init(.{
                         e.button.x,
                         e.button.y,
                     }) };
