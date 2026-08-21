@@ -17,6 +17,8 @@ pub const PipelineConfig = struct {
     vertexAttributeDescriptions: ?[]const c.VkVertexInputAttributeDescription = null,
     pushConstantRanges: ?[]const c.VkPushConstantRange = null,
     topology: Topology,
+    depthTest: bool = true,
+    depthWrite: bool = true,
 };
 
 pub const PipelineResult = struct {
@@ -166,8 +168,8 @@ pub fn createGraphicsPipeline(config: PipelineConfig) !PipelineResult {
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .depthTestEnable = c.VK_TRUE,
-        .depthWriteEnable = c.VK_TRUE,
+        .depthTestEnable = vk.getVkBool(config.depthTest),
+        .depthWriteEnable = vk.getVkBool(config.depthWrite),
         .depthCompareOp = c.VK_COMPARE_OP_LESS,
         .depthBoundsTestEnable = c.VK_FALSE,
         .minDepthBounds = 0.0,

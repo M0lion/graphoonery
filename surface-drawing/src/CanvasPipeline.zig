@@ -73,6 +73,8 @@ pub const CanvasPipeline = struct {
             .renderPass = config.renderPass,
             .topology = pipe.Topology.TriangleStrip,
             .descriptorSetLayouts = &layouts,
+            .depthTest = false,
+            .depthWrite = false,
         });
 
         const sampler = try vulkan.sampler.Sampler.init(vulkanContext);

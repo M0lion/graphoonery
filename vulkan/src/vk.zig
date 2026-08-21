@@ -5,6 +5,10 @@ pub const c = @cImport({
     @cInclude("vulkan/vulkan_wayland.h");
 });
 
+pub fn getVkBool(value: bool) c.VkBool32 {
+    if (value) return c.VK_TRUE else return c.VK_FALSE;
+}
+
 // Re-export common types for convenience
 pub const Result = enum(c.VkResult) {
     VK_SUCCESS = 0,

@@ -147,28 +147,40 @@ pub fn main() !void {
             });
             context.endPass();
         }
-        try context.beginSwapchainPass(.{ .cmd = cmd });
-        uiContext.cmd = cmd;
-        ui.drawRect(.{ .h = 50, .w = 200, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 25);
-        pickedColor = ColorPicker.drawColorPicker(
-            &ui,
-            .{
-                .clicked = clicked,
-                .pos = .init(.{ @intFromFloat(x), @intFromFloat(y) }),
-            },
-            .{
-                .pos = .init(.{ -960, 100 }),
-                .picked = pickedColor,
-                .colors = &colors,
-                .size = .init(.{ 1000, 50 }),
-            },
-        );
 
-        canvasPipeline.draw(cmd, canvasDescriptor);
+        {
+            // Start swapchain pass
+            try context.beginSwapchainPass(.{ .cmd = cmd });
+            defer context.endSwapchainPass();
+            uiContext.cmd = cmd;
+            defer uiContext.cmd = null;
 
-        uiContext.cmd = null;
+            // Draw canvas
+            canvasPipeline.draw(cmd, canvasDescriptor);
 
-        context.endSwapchainPass();
+            // Draw test rect
+            ui.drawRect(.{ .h = 50, .w = 200, .x = 0, .y = 0 }, .{ 1, 0, 0, 1 }, 5, .{ 0, 1, 0, 1 }, 25);
+
+            // Draw color picker ui
+            pickedColor = ColorPicker.drawColorPicker(
+                &ui,
+                .{
+                    .clicked = clicked,
+                    .pos = .init(.{ @intFromFloat(x), @intFromFloat(y) }),
+                },
+                .{
+                    .pos = .init(.{ -960, 100 }),
+                    .picked = pickedColor,
+                    .colors = &colors,
+                    .size = .init(.{ 1000, 50 }),
+                },
+            );
+
+            // End swapchain and ui pass
+            uiContext.cmd = null;
+            context.endSwapchainPass();
+        }
+
         try context.endDraw();
         try context.presentSwpachain();
     }

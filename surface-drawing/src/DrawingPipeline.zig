@@ -59,6 +59,8 @@ pub const DrawingPipeline = struct {
             .fragShaderModule = fragShaderModule,
             .renderPass = config.renderPass,
             .topology = pipe.Topology.TriangleStrip,
+            .depthTest = false,
+            .depthWrite = false,
         });
 
         return DrawingPipeline{

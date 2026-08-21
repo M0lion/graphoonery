@@ -61,6 +61,8 @@ pub const RoundedCornerPipeline = struct {
             .fragShaderModule = fragShaderModule,
             .renderPass = config.renderPass,
             .topology = pipe.Topology.TriangleStrip,
+            .depthTest = false,
+            .depthWrite = false,
         });
 
         return RoundedCornerPipeline{
